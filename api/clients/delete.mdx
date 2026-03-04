@@ -1,0 +1,145 @@
+---
+title: "Delete Client"
+api: "DELETE /api/clients/:id"
+description: "Permanently delete a client and all associated data"
+---
+
+## Authentication
+
+Requires authenticated user session. User must own the client being deleted.
+
+## Path Parameters
+
+<ParamField path="id" type="string" required>
+  The unique identifier of the client to delete
+</ParamField>
+
+## Response
+
+<ResponseField name="message" type="string">
+  Confirmation message indicating successful deletion
+</ResponseField>
+
+## Cascade Deletion
+
+Deleting a client will also permanently delete:
+- All reports generated for this client
+- All Google API connection data (tokens, property selections)
+- All custom metrics configured for this client
+- All associated metadata and timestamps
+
+This operation cannot be undone.
+
+## Error Responses
+
+<ResponseField name="error" type="string">
+  Error message describing what went wrong
+</ResponseField>
+
+## Example Request
+
+```bash cURL
+curl -X DELETE https://your-domain.com/api/clients/clx1a2b3c4d5e6f7g8h9i0j1k \
+  -H "Cookie: next-auth.session-token=..."
+```
+
+```javascript JavaScript
+const response = await fetch('/api/clients/clx1a2b3c4d5e6f7g8h9i0j1k', {
+  method: 'DELETE'
+});
+
+const result = await response.json();
+```
+
+## Example Response
+
+```json 200 Success
+{
+  "message": "Client deleted successfully"
+}
+```
+
+```json 404 Not Found
+{
+  "error": "Client not found or unauthorized"
+}
+```
+
+```json 401 Unauthorized
+{
+  "error": "Unauthorized"
+}
+```
+
+```json 500 Server Error
+{
+  "error": "Failed to delete client"
+}
+```
+
+## Best Practices
+
+### Confirm Before Deletion
+
+Always implement confirmation dialogs in your UI before calling this endpoint:
+
+```javascript JavaScript Example
+const deleteClient = async (clientId) => {
+  const confirmed = confirm(
+    'Are you sure you want to delete this client? ' +
+    'This will permanently delete all reports and cannot be undone.'
+  );
+  
+  if (!confirmed) return;
+  
+  try {
+    const response = await fetch(`/api/clients/${clientId}`, {
+      method: 'DELETE'
+    });
+    
+    if (response.ok) {
+      // Update UI to remove client
+      console.log('Client deleted successfully');
+    }
+  } catch (error) {
+    console.error('Failed to delete client:', error);
+  }
+};
+```
+
+### Handle Deletion Status
+
+Monitor deletion status and provide user feedback:
+
+```javascript JavaScript Example
+const deleteClientWithStatus = async (clientId) => {
+  const statusElement = document.getElementById('status');
+  statusElement.textContent = 'Deleting client...';
+  
+  try {
+    const response = await fetch(`/api/clients/${clientId}`, {
+      method: 'DELETE'
+    });
+    
+    if (response.ok) {
+      statusElement.textContent = 'Client deleted successfully';
+      // Redirect or update UI
+      window.location.href = '/dashboard/clients';
+    } else {
+      const error = await response.json();
+      statusElement.textContent = `Error: ${error.error}`;
+    }
+  } catch (error) {
+    statusElement.textContent = 'Failed to delete client';
+  }
+};
+```
+
+## Notes
+
+- Only the client owner can delete a client
+- Attempting to delete a non-existent client or another user's client returns 404
+- This operation is permanent and cannot be undone
+- All related reports are cascade-deleted automatically via database constraints
+- Google OAuth tokens are permanently revoked and removed
+- Deleted clients do not count against plan limits

@@ -1,0 +1,571 @@
+---
+title: 'AI-Powered Insights'
+description: 'Claude 4.5 Sonnet analyzes your SEO data to generate strategic, actionable recommendations'
+icon: 'brain'
+---
+
+## Overview
+
+Reportr uses Anthropic's Claude 4.5 Sonnet to analyze SEO data and generate strategic recommendations. Every report includes 5 data-driven insights with specific action items, expected impact, and priority levels.
+
+<Info>
+  **AI Cost**: Insights generation costs approximately $0.008-0.015 per report. This cost is included in your Reportr subscription.
+</Info>
+
+## How It Works
+
+The AI insights pipeline runs as part of report generation:
+
+<Steps>
+  <Step title="Data Collection">
+    After fetching Google Search Console, Analytics, and PageSpeed data, Reportr aggregates key metrics:
+    
+    - Total clicks and change %
+    - Average keyword position
+    - Top keywords and pages
+    - Mobile/desktop performance scores
+    - Organic traffic trends
+  </Step>
+  
+  <Step title="Prompt Construction">
+    Reportr builds a structured prompt with:
+    
+    - Client's actual data (clicks, keywords, scores)
+    - Specific instructions for insight format
+    - Examples of good vs. poor recommendations
+    - Required JSON output schema
+  </Step>
+  
+  <Step title="Claude API Call">
+    Sends prompt to Claude 4.5 Sonnet model:
+    
+    ```typescript
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 2000,
+      messages: [{
+        role: 'user',
+        content: prompt
+      }]
+    });
+    ```
+  </Step>
+  
+  <Step title="Response Parsing">
+    Claude returns JSON with 5 insights. Reportr parses and validates:
+    
+    - Title (5-8 words, action-oriented)
+    - Description (2-3 sentences, data-specific)
+    - Priority (high/medium/low)
+    - Category (keyword/technical/content/performance)
+    - Expected impact (quantified)
+    - Action items (2-3 specific steps)
+  </Step>
+  
+  <Step title="Fallback Handling">
+    If AI generation fails:
+    
+    - Rule-based insights are used instead
+    - Report generation continues successfully
+    - Metadata marks insights as "fallback" source
+  </Step>
+</Steps>
+
+## Prompt Engineering
+
+Reportr's prompt is carefully engineered to generate specific, actionable insights:
+
+```typescript AI Prompt (from insights-generator.ts)
+const prompt = `
+Generate exactly 5 strategic recommendations based on this SEO data.
+
+Each recommendation MUST be:
+1. SPECIFIC to this client's actual data (reference specific keywords, pages, or metrics)
+2. ACTIONABLE with clear next steps  
+3. PRIORITIZED based on potential impact
+
+For each recommendation provide:
+- title: Action-oriented headline (5-8 words)
+- description: 2-3 sentences explaining the opportunity and approach. Reference specific data points.
+- priority: "high", "medium", or "low" based on potential ROI
+- category: "keyword", "technical", "content", or "performance"  
+- expectedImpact: Quantified expected outcome (e.g., "Potential 20% increase in organic traffic")
+- actionItems: Array of 2-3 specific action steps
+
+Example of GOOD recommendation:
+{
+  "title": "Target Page 2 Keywords for Quick Wins",
+  "description": "You have 12 keywords ranking positions 11-20 that are close to page 1. Keywords like 'digital marketing services' at position 14 with 450 monthly impressions represent immediate opportunities. Optimizing these pages could move them to page 1 within 30-60 days.",
+  "priority": "high", 
+  "category": "keyword",
+  "expectedImpact": "Moving 5 keywords to page 1 could generate 200+ additional monthly clicks",
+  "actionItems": [
+    "Identify top 5 keywords in positions 11-15", 
+    "Add target keyword to H1 and first paragraph", 
+    "Build 2-3 internal links to each target page"
+  ]
+}
+
+DATA TO ANALYZE:
+- Domain: ${domain}
+- Total Clicks: ${clicks} (${clicksChange}% change)
+- Total Impressions: ${impressions}  
+- Average Position: ${position}
+- Organic Sessions: ${organicSessions} (${sessionsChange}% change)
+- Mobile Score: ${mobileScore}/100
+- Desktop Score: ${desktopScore}/100
+- Top Keywords: ${topKeywords.slice(0, 10).join(', ') || 'No data'}
+- Top Pages: ${topPages.slice(0, 5).join(', ') || 'No data'}
+
+Return ONLY valid JSON array with exactly 5 recommendations in this format:
+{
+  "insights": [
+    {
+      "title": "Action-oriented title",
+      "description": "Detailed explanation referencing specific data",
+      "priority": "high|medium|low",
+      "category": "keyword|technical|content|performance",
+      "expectedImpact": "Quantified expected result",
+      "actionItems": ["Step 1", "Step 2", "Step 3"],
+      "dataSource": ["Google Search Console", "PageSpeed Insights", "etc."]
+    }
+  ]
+}
+
+Make insights specific, actionable, and data-driven. Reference actual metrics from the data provided.`;
+```
+
+<Tip>
+  The prompt includes a concrete example to guide Claude toward the desired output format and level of specificity.
+</Tip>
+
+## Insight Categories
+
+AI recommendations are categorized into four types:
+
+<Tabs>
+  <Tab title="Keyword Insights">
+    **Focus**: Search query optimization
+    
+    Common recommendations:
+    - Target page 2 keywords (positions 11-20)
+    - Improve CTR for high-impression, low-click keywords
+    - Address keyword cannibalization
+    - Capture seasonal opportunities
+    - Expand to long-tail variations
+    
+    **Data Sources**: Search Console keyword performance
+  </Tab>
+  
+  <Tab title="Technical Insights">
+    **Focus**: Site performance and infrastructure
+    
+    Common recommendations:
+    - Improve Core Web Vitals (LCP, FID, CLS)
+    - Optimize mobile page speed
+    - Fix render-blocking resources
+    - Reduce server response times
+    - Implement structured data
+    
+    **Data Sources**: PageSpeed Insights, Search Console crawl stats
+  </Tab>
+  
+  <Tab title="Content Insights">
+    **Focus**: Content strategy and quality
+    
+    Common recommendations:
+    - Expand thin content pages
+    - Create topic cluster content
+    - Update outdated content
+    - Fill content gaps
+    - Improve E-E-A-T signals
+    
+    **Data Sources**: Search Console page performance, Analytics engagement
+  </Tab>
+  
+  <Tab title="Performance Insights">
+    **Focus**: Conversion and user experience
+    
+    Common recommendations:
+    - Reduce bounce rate on key pages
+    - Improve session duration
+    - Optimize landing page experience
+    - Set up conversion tracking
+    - Enhance mobile UX
+    
+    **Data Sources**: Google Analytics behavior metrics
+  </Tab>
+</Tabs>
+
+## Priority Levels
+
+Each insight is assigned a priority based on potential impact:
+
+<CardGroup cols={3}>
+  <Card title="High Priority" icon="circle-exclamation" iconType="solid">
+    **ROI Potential**: Immediate, significant impact
+    
+    Examples:
+    - Page 2 keywords close to page 1
+    - Critical Core Web Vitals failures
+    - High-traffic pages with poor engagement
+    
+    **Recommended Action**: Address within 1-2 weeks
+  </Card>
+  
+  <Card title="Medium Priority" icon="circle-exclamation">
+    **ROI Potential**: Moderate impact over time
+    
+    Examples:
+    - Content expansion opportunities
+    - Mobile performance improvements
+    - Internal linking enhancements
+    
+    **Recommended Action**: Address within 1-2 months
+  </Card>
+  
+  <Card title="Low Priority" icon="circle">
+    **ROI Potential**: Incremental improvements
+    
+    Examples:
+    - Advanced tracking setup
+    - Long-term content strategy
+    - Proactive monitoring
+    
+    **Recommended Action**: Ongoing initiatives
+  </Card>
+</CardGroup>
+
+## Expected Impact Statements
+
+Claude generates quantified impact predictions:
+
+<AccordionGroup>
+  <Accordion title="Keyword Opportunities">
+    "Moving 5 keywords from page 2 to page 1 could double organic traffic"
+    
+    "Improving CTR by 2% on top 10 keywords could generate 150+ additional monthly clicks"
+  </Accordion>
+  
+  <Accordion title="Technical Improvements">
+    "Improving mobile score to 85+ could increase mobile traffic by 15-25%"
+    
+    "Fixing Core Web Vitals could improve rankings by 10-20%"
+  </Accordion>
+  
+  <Accordion title="Content Strategy">
+    "Comprehensive content hubs can increase organic traffic by 25-40%"
+    
+    "Expanding thin content could capture 30% more long-tail keywords"
+  </Accordion>
+  
+  <Accordion title="Performance Tracking">
+    "Improved tracking leads to 30% better optimization ROI"
+    
+    "Enhanced conversion tracking could reveal $10K+ in attribution gaps"
+  </Accordion>
+</AccordionGroup>
+
+## Action Items
+
+Each insight includes 2-3 specific, actionable steps:
+
+### Example: Page 2 Keyword Insight
+
+```json
+{
+  "title": "Target Page 2 Keywords for Quick Wins",
+  "description": "You have 12 keywords ranking positions 11-20...",
+  "priority": "high",
+  "actionItems": [
+    "Identify top 5 keywords in positions 11-15 with highest search volume",
+    "Optimize title tags and H1 headers to include target keywords naturally",
+    "Build 2-3 strategic internal links from high-authority pages to boost page authority"
+  ]
+}
+```
+
+### Example: Mobile Performance Insight
+
+```json
+{
+  "title": "Improve Mobile Page Speed",
+  "description": "Your mobile page speed score is 52/100...",
+  "priority": "high",
+  "actionItems": [
+    "Compress and optimize all images to WebP format using tools like Squoosh",
+    "Minimize JavaScript and CSS file sizes, defer non-critical scripts",
+    "Implement lazy loading for images and videos below the fold"
+  ]
+}
+```
+
+## Fallback Insights
+
+If Claude API fails, Reportr uses rule-based insights:
+
+```typescript Fallback Insight Generation (from insights-generator.ts)
+private getFallbackInsights(data?: Partial<ReportData>): AIInsight[] {
+  const insights: AIInsight[] = [];
+  
+  // 1. Mobile Performance Check
+  const mobileScore = data?.summary?.mobileScore || 50;
+  if (mobileScore < 75) {
+    insights.push({
+      id: `fallback-mobile-${timestamp}`,
+      title: 'Improve Mobile Page Speed',
+      description: `Your mobile page speed score is ${mobileScore}/100, which is below optimal performance. Mobile speed directly impacts both user experience and Google rankings, especially since mobile-first indexing.`,
+      priority: mobileScore < 50 ? 'high' : 'medium',
+      category: 'technical',
+      expectedImpact: 'Improving to 85+ could increase mobile traffic by 15-25%',
+      actionItems: [
+        'Compress and optimize all images to WebP format',
+        'Minimize JavaScript and CSS file sizes',
+        'Implement lazy loading for non-critical content'
+      ],
+      dataSource: ['PageSpeed Insights']
+    });
+  }
+  
+  // 2. Keyword Position Opportunities
+  const avgPosition = data?.summary?.averagePosition || 15;
+  if (avgPosition > 8) {
+    insights.push({
+      title: 'Target Page 2 Keywords for Quick Wins',
+      description: `Your average keyword position is ${avgPosition.toFixed(1)}, indicating many keywords are on page 2-3. Focusing on keywords ranking positions 8-20 represents the highest ROI opportunities for quick ranking improvements.`,
+      priority: 'high',
+      category: 'keyword',
+      expectedImpact: 'Moving 10 keywords from page 2 to page 1 could double organic traffic',
+      actionItems: [
+        'Identify keywords ranking positions 8-20 with high search volume',
+        'Optimize title tags and H1s for target keywords',
+        'Build strategic internal links to boost page authority'
+      ],
+      dataSource: ['Google Search Console']
+    });
+  }
+  
+  // ... 3 more fallback insights
+  
+  return insights.slice(0, 5);
+}
+```
+
+<Info>
+  Fallback insights are still valuable and data-driven, just not AI-generated. They provide a safety net for uninterrupted report generation.
+</Info>
+
+## AI Metadata
+
+Each report tracks AI insight metadata:
+
+```typescript Report AI Fields (from schema.prisma)
+model Report {
+  id              String @id @default(cuid())
+  // ... other fields
+  
+  // AI Insights metadata
+  aiInsights            Json?     // Array of insight objects
+  aiInsightsSource      String?   // "ai" | "rule-based" | "fallback"
+  aiInsightsGeneratedAt DateTime? // When insights were generated
+  aiTokensUsed          Int?      // Token count for cost tracking
+  aiCostUsd             Float?    // Cost in USD for this generation
+  aiError               String?   // Error message if AI failed
+}
+```
+
+### Cost Tracking
+
+```typescript Token Usage Tracking
+// After Claude API call
+const response = await anthropic.messages.create(...);
+
+const tokensUsed = response.usage.input_tokens + response.usage.output_tokens;
+const costUsd = (tokensUsed / 1000) * 0.003; // Claude pricing
+
+await prisma.report.update({
+  where: { id: reportId },
+  data: {
+    aiTokensUsed: tokensUsed,
+    aiCostUsd: costUsd,
+    aiInsightsSource: 'ai'
+  }
+});
+```
+
+**Typical Usage**:
+- Input tokens: ~1,500 (prompt + data)
+- Output tokens: ~500 (5 insights in JSON)
+- Total: ~2,000 tokens
+- Cost: ~$0.006 per report
+
+## Data Sources Referenced
+
+Insights cite which Google services provided the data:
+
+```json Insight with Data Sources
+{
+  "title": "Optimize High-Impression, Low-Click Keywords",
+  "description": "...",
+  "dataSource": [
+    "Google Search Console",
+    "Google Analytics"
+  ]
+}
+```
+
+Possible sources:
+- `"Google Search Console"` - Keyword/page performance
+- `"Google Analytics"` - Traffic and behavior metrics
+- `"PageSpeed Insights"` - Performance scores
+- `"Cross-Platform Analysis"` - Combined data insights
+
+## Example AI Insights
+
+Here's what actual Claude-generated insights look like:
+
+<AccordionGroup>
+  <Accordion title="High Priority: Keyword Opportunity" icon="key">
+    ```json
+    {
+      "title": "Capitalize on Page 2 Keyword Opportunities",
+      "description": "Analysis shows 18 keywords currently ranking in positions 11-20, with a combined 12,400 monthly impressions but only 234 clicks. Keywords like 'local seo services' (position 13, 850 impressions) and 'seo audit tool' (position 16, 1,200 impressions) are prime candidates. Moving just 5 of these keywords to page 1 could increase your organic traffic by 35-40%.",
+      "priority": "high",
+      "category": "keyword",
+      "expectedImpact": "Estimated 400-500 additional monthly clicks from improved rankings",
+      "actionItems": [
+        "Export keywords ranking 11-20 from Search Console and prioritize by impression volume",
+        "Add primary target keyword to page title, H1, and first 100 words of content",
+        "Build 3-5 contextual internal links from high-authority pages to each target page",
+        "Create FAQ section targeting related long-tail variations of main keyword"
+      ],
+      "dataSource": ["Google Search Console"]
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="High Priority: Technical SEO" icon="gauge">
+    ```json
+    {
+      "title": "Address Critical Mobile Performance Issues",
+      "description": "Your mobile PageSpeed score of 47/100 is significantly below Google's recommended threshold. The Largest Contentful Paint (LCP) is 4.2 seconds (should be under 2.5s) and Cumulative Layout Shift is 0.31 (should be under 0.1). Since Google uses mobile-first indexing, these issues directly impact rankings across all devices.",
+      "priority": "high",
+      "category": "technical",
+      "expectedImpact": "Improving mobile score to 75+ could increase mobile organic traffic by 20-30%",
+      "actionItems": [
+        "Implement modern image formats (WebP) and lazy loading to reduce LCP by 40-50%",
+        "Set explicit width/height attributes on all images and ads to eliminate layout shifts",
+        "Defer non-critical JavaScript and reduce main thread blocking time",
+        "Enable text compression (gzip/brotli) to reduce initial page weight by 60-70%"
+      ],
+      "dataSource": ["PageSpeed Insights"]
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Medium Priority: Content Strategy" icon="file-lines">
+    ```json
+    {
+      "title": "Expand Top-Performing Content for Greater Reach",
+      "description": "Your blog post '/seo-basics-guide' generates 1,234 monthly clicks (highest on site) but has an average session duration of only 42 seconds and 68% bounce rate. This suggests users aren't finding comprehensive answers. The page currently ranks for 23 keywords, but keyword gap analysis shows 40+ related terms you're not targeting that competitors rank for.",
+      "priority": "medium",
+      "category": "content",
+      "expectedImpact": "Expanding this content could capture 30-40 additional keyword rankings and reduce bounce rate by 15-20%",
+      "actionItems": [
+        "Expand article from 800 to 2,500+ words covering all subtopics in depth",
+        "Add structured data (FAQ schema) for featured snippet opportunities",
+        "Create visual content (infographics, charts) to improve engagement metrics",
+        "Build internal linking hub connecting to 5-10 related topic pages"
+      ],
+      "dataSource": ["Google Search Console", "Google Analytics"]
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Review AI Insights" icon="magnifying-glass">
+    Always review AI recommendations before sharing with clients. Claude is very accurate but can occasionally hallucinate specific numbers.
+  </Card>
+  
+  <Card title="Prioritize by Impact" icon="arrow-up-wide-short">
+    Focus on high-priority insights first. These offer the best ROI for client efforts.
+  </Card>
+  
+  <Card title="Track Implementation" icon="list-check">
+    Use insights as a checklist. Track which recommendations have been implemented and measure results.
+  </Card>
+  
+  <Card title="Explain to Clients" icon="comments">
+    Insights are written for SEO professionals. Add context when sharing with less technical clients.
+  </Card>
+</CardGroup>
+
+## Limitations
+
+<Warning>
+  **AI Limitations**:
+  
+  - Claude doesn't have real-time web access - it only sees the data you provide
+  - Impact predictions are estimates based on industry benchmarks
+  - Some recommendations may not apply to all industries/niches
+  - Always validate insights against your domain expertise
+</Warning>
+
+## Performance
+
+<ResponseField name="AI Generation Time" type="timing">
+  **15-30 seconds** - Claude API call and response parsing
+</ResponseField>
+
+<ResponseField name="Success Rate" type="metric">
+  **95%+** - AI generation succeeds in 95%+ of cases. Fallback handles failures.
+</ResponseField>
+
+<ResponseField name="Token Usage" type="metric">
+  **~2,000 tokens per report** - Approximately 1,500 input + 500 output tokens
+</ResponseField>
+
+<ResponseField name="Cost" type="pricing">
+  **$0.006-0.015 per report** - Based on Claude 4.5 Sonnet pricing (~$0.003 per 1K tokens)
+</ResponseField>
+
+## Future Enhancements
+
+Planned improvements to AI insights:
+
+<CardGroup cols={2}>
+  <Card title="Competitor Analysis" icon="users-between-lines">
+    Compare client performance to industry benchmarks and suggest competitive opportunities
+  </Card>
+  
+  <Card title="Historical Trends" icon="chart-line">
+    Analyze month-over-month changes and predict future trends
+  </Card>
+  
+  <Card title="Custom Instructions" icon="sliders">
+    Let users provide context about client goals, constraints, or preferences
+  </Card>
+  
+  <Card title="Insight Ratings" icon="star">
+    Track which insights lead to best results and improve prompt accordingly
+  </Card>
+</CardGroup>
+
+## Related Resources
+
+<CardGroup cols={3}>
+  <Card title="Report Generation" icon="file-pdf" href="/features/report-generation">
+    See how AI insights fit into the full report pipeline
+  </Card>
+  
+  <Card title="Google Integrations" icon="google" href="/features/google-integrations">
+    Understand the data sources that power AI analysis
+  </Card>
+  
+  <Card title="Claude API Docs" icon="book" href="https://docs.anthropic.com">
+    Official Anthropic Claude API documentation
+  </Card>
+</CardGroup>

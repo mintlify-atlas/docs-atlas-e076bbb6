@@ -1,0 +1,384 @@
+---
+title: 'Client Management'
+description: 'Add and manage client websites, configure Google integrations, and track reporting history'
+icon: 'users'
+---
+
+## Overview
+
+The Client Management system in Reportr lets you organize all your client websites in one centralized dashboard. Each client can have Google Search Console and Google Analytics 4 connected to automatically pull SEO data for report generation.
+
+<Info>
+  **Plan Limits Apply**: Free users can add up to 3 clients, Starter plans get 5 clients, Professional plans get 25 clients, and Agency plans support unlimited clients.
+</Info>
+
+## Adding a New Client
+
+You can add clients through the main Clients dashboard. The system validates your input and checks your plan limits before creating the client.
+
+<Steps>
+  <Step title="Navigate to Clients">
+    From your dashboard, click on **Clients** in the sidebar navigation.
+  </Step>
+  
+  <Step title="Click Add Client">
+    Click the **Add Client** button in the top-right corner. If you're at your plan limit, you'll see an "Upgrade to Add More" button instead.
+  </Step>
+  
+  <Step title="Enter Client Information">
+    Fill out the client creation form:
+    
+    - **Client Name** (required) - Minimum 2 characters, max 50 characters
+    - **Website Domain** (required) - Must be a valid URL (e.g., `https://example.com`)
+    - **Contact Name** (optional) - Primary contact person
+    - **Contact Email** (optional) - Must be a valid email if provided
+  </Step>
+  
+  <Step title="Save the Client">
+    Click **Add Client** to create the client record. You'll see a success notification and the client will appear in your dashboard.
+  </Step>
+</Steps>
+
+### Example: Adding a Client via API
+
+```javascript Client Creation
+const response = await fetch('/api/clients', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    name: 'Acme Corporation',
+    domain: 'https://acme.com',
+    contactName: 'John Smith',
+    contactEmail: 'john@acme.com'
+  })
+});
+
+const client = await response.json();
+console.log('Client created:', client.id);
+```
+
+## Client Dashboard Overview
+
+Each client card displays key information at a glance:
+
+<CardGroup cols={2}>
+  <Card title="Connection Status" icon="link">
+    Visual indicators show whether Google Search Console and GA4 are connected and configured
+  </Card>
+  
+  <Card title="Report History" icon="chart-bar">
+    See total reports generated and the date of the last report
+  </Card>
+  
+  <Card title="Contact Info" icon="address-card">
+    Quick access to client contact name and email
+  </Card>
+  
+  <Card title="Quick Actions" icon="bolt">
+    Generate reports, manage properties, or edit client details in one click
+  </Card>
+</CardGroup>
+
+## Google Integration States
+
+Clients progress through three connection states:
+
+<AccordionGroup>
+  <Accordion title="Not Connected" icon="circle-xmark" iconType="solid">
+    The client has no Google account linked yet. Click **Connect Google Accounts** to start the OAuth flow.
+    
+    **Status Badge**: Gray "Not Connected"
+  </Accordion>
+  
+  <Accordion title="Setup Required" icon="triangle-exclamation" iconType="solid">
+    Google OAuth is complete, but Search Console site and GA4 property need to be selected. Click **Setup Properties** to configure.
+    
+    **Status Badge**: Yellow "Setup Required"
+  </Accordion>
+  
+  <Accordion title="Configured" icon="circle-check" iconType="solid">
+    Fully configured with both GSC site and GA4 property selected. Ready to generate reports.
+    
+    **Status Badge**: Green "Configured"
+    
+    You'll see the selected property names displayed:
+    - Google Search Console site (e.g., "https://acme.com/")
+    - GA4 property (e.g., "Acme Production Website")
+  </Accordion>
+</AccordionGroup>
+
+## Connecting Google Accounts
+
+Reportr uses OAuth 2.0 to securely connect to Google APIs without storing passwords.
+
+<Steps>
+  <Step title="Initiate OAuth">
+    Click **Connect Google Accounts** on a client card. A popup window opens with Google's authorization screen.
+  </Step>
+  
+  <Step title="Select Google Account">
+    Choose the Google account that has access to the client's Search Console and Analytics properties.
+  </Step>
+  
+  <Step title="Grant Permissions">
+    Reportr requests read-only access to:
+    - Google Search Console data
+    - Google Analytics data
+    
+    <Warning>
+      Reportr only requests **read-only** permissions. We never modify your Google data.
+    </Warning>
+  </Step>
+  
+  <Step title="Configure Properties">
+    After OAuth completes, you'll see "Setup Required" status. Click **Setup Properties** to select which GSC site and GA4 property to use for this client.
+  </Step>
+</Steps>
+
+### OAuth Implementation Details
+
+The OAuth flow is handled by the `/api/auth/google/authorize` endpoint:
+
+```typescript OAuth Flow (Simplified)
+// Step 1: Initiate OAuth
+const authUrl = `/api/auth/google/authorize?clientId=${clientId}`;
+window.open(authUrl, 'google-oauth', 'width=600,height=700');
+
+// Step 2: After successful auth, tokens are stored
+// Database fields updated:
+// - googleAccessToken (encrypted)
+// - googleRefreshToken (encrypted) 
+// - googleTokenExpiry
+// - googleConnectedAt
+```
+
+## Managing Client Properties
+
+After connecting Google, you need to select which specific properties to track.
+
+<Tabs>
+  <Tab title="Search Console Site">
+    Select the GSC property URL that matches your client's domain:
+    
+    - Domain properties: `sc-domain:example.com`
+    - URL-prefix properties: `https://example.com/`
+    
+    The system fetches all verified sites from the connected Google account and displays them in a dropdown.
+  </Tab>
+  
+  <Tab title="GA4 Property">
+    Choose the Google Analytics 4 property to pull traffic data from:
+    
+    - Property name is displayed (e.g., "Acme Production")
+    - Property ID is stored (numeric ID like `123456789`)
+    
+    All accessible GA4 properties are fetched from the Google Analytics Admin API.
+  </Tab>
+</Tabs>
+
+### Property Selection API
+
+```typescript Property Configuration
+// Fetch available properties
+GET /api/clients/{clientId}/properties
+
+Response:
+{
+  "gscSites": [
+    { "url": "https://acme.com/", "name": "Acme Main Site" },
+    { "url": "sc-domain:acme.com", "name": "Acme Domain" }
+  ],
+  "ga4Properties": [
+    { "id": "123456789", "name": "Acme Production" },
+    { "id": "987654321", "name": "Acme Staging" }
+  ]
+}
+
+// Save selections
+PATCH /api/clients/{clientId}/properties
+{
+  "gscSiteUrl": "https://acme.com/",
+  "ga4PropertyId": "123456789"
+}
+```
+
+## Editing Client Details
+
+Click **Manage** on any client card to update client information.
+
+<AccordionGroup>
+  <Accordion title="Basic Information">
+    - Client name
+    - Website domain
+    - Contact name
+    - Contact email
+  </Accordion>
+  
+  <Accordion title="Google Integration">
+    - Reconnect Google account
+    - Change selected GSC site
+    - Change selected GA4 property
+    - View connection status and last connected date
+  </Accordion>
+  
+  <Accordion title="Danger Zone">
+    - Disconnect Google integration
+    - Delete client (permanent action)
+    
+    <Warning>
+      Deleting a client also deletes all associated reports. This action cannot be undone.
+    </Warning>
+  </Accordion>
+</AccordionGroup>
+
+## Searching and Filtering Clients
+
+Use the search bar at the top of the Clients page to quickly find clients:
+
+```
+Searchable fields:
+- Client name
+- Domain
+- Contact name  
+- Contact email
+```
+
+Search is case-insensitive and searches across all fields simultaneously.
+
+## Client Data Model
+
+Each client in Reportr has the following structure:
+
+<ResponseField name="id" type="string" required>
+  Unique client identifier (cuid format)
+</ResponseField>
+
+<ResponseField name="name" type="string" required>
+  Client display name
+</ResponseField>
+
+<ResponseField name="domain" type="string" required>
+  Client website URL
+</ResponseField>
+
+<ResponseField name="contactName" type="string">
+  Primary contact person name
+</ResponseField>
+
+<ResponseField name="contactEmail" type="string">
+  Primary contact email address
+</ResponseField>
+
+<ResponseField name="googleConnectedAt" type="datetime">
+  When Google OAuth was completed
+</ResponseField>
+
+<ResponseField name="gscSiteUrl" type="string">
+  Selected Google Search Console property URL
+</ResponseField>
+
+<ResponseField name="gscSiteName" type="string">
+  Display name for GSC property
+</ResponseField>
+
+<ResponseField name="ga4PropertyId" type="string">
+  Selected GA4 property ID (numeric string)
+</ResponseField>
+
+<ResponseField name="ga4PropertyName" type="string">
+  Display name for GA4 property
+</ResponseField>
+
+<ResponseField name="lastReportGenerated" type="datetime">
+  Date of most recent report generation
+</ResponseField>
+
+<ResponseField name="totalReportsGenerated" type="integer">
+  Lifetime count of reports created for this client
+</ResponseField>
+
+## Access Control
+
+<Info>
+  Email verification is required before you can add clients. Free users must verify their email, while paid users get immediate access.
+</Info>
+
+### Verification Flow
+
+```typescript Access Check (from source)
+const hasActivePayPalSubscription = 
+  user.paypalSubscriptionId && user.subscriptionStatus === 'active';
+const isPaidTrialFlow = user.signupFlow === 'PAID_TRIAL';
+const isFreeVerifiedUser = 
+  user.signupFlow === 'FREE' && user.emailVerified;
+
+const hasAccess = 
+  hasActivePayPalSubscription || isPaidTrialFlow || isFreeVerifiedUser;
+
+if (!hasAccess) {
+  return res.status(403).json({
+    error: 'Please verify your email before adding clients',
+    requiresVerification: true
+  });
+}
+```
+
+## Common Issues
+
+<AccordionGroup>
+  <Accordion title="Cannot add more clients">
+    **Solution**: You've reached your plan limit. Upgrade your plan to add more clients:
+    - Free: 3 clients
+    - Starter: 5 clients
+    - Professional: 25 clients
+    - Agency: Unlimited clients
+  </Accordion>
+  
+  <Accordion title="Google OAuth popup blocked">
+    **Solution**: Check your browser's popup blocker settings and allow popups from Reportr. Then try connecting again.
+  </Accordion>
+  
+  <Accordion title="No Google properties showing up">
+    **Solution**: Make sure the Google account you connected has access to Search Console and Analytics for the client's domain. You may need to be added as a user in those platforms first.
+  </Accordion>
+  
+  <Accordion title="'Setup Required' status won't clear">
+    **Solution**: Click **Setup Properties** and select both a Search Console site AND a GA4 property. Both are required to change status to "Configured".
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Clear Client Names" icon="tag">
+    Use descriptive names that help you quickly identify clients (e.g., "Acme Corp - Production" instead of just "Client 1")
+  </Card>
+  
+  <Card title="Verify Domains Match" icon="shield-check">
+    Ensure the domain you enter matches exactly what's configured in Search Console and Analytics
+  </Card>
+  
+  <Card title="Add Contact Info" icon="address-book">
+    Include contact details to keep client communication organized within Reportr
+  </Card>
+  
+  <Card title="Test After Setup" icon="vial">
+    Generate a test report immediately after configuring properties to verify data is flowing correctly
+  </Card>
+</CardGroup>
+
+## Related Resources
+
+<CardGroup cols={3}>
+  <Card title="Google Integrations" icon="google" href="/features/google-integrations">
+    Deep dive into Search Console and Analytics connections
+  </Card>
+  
+  <Card title="Report Generation" icon="file-pdf" href="/features/report-generation">
+    Learn how to generate reports for your clients
+  </Card>
+  
+  <Card title="Plan Limits" icon="layer-group" href="/pricing">
+    View client limits for each plan tier
+  </Card>
+</CardGroup>

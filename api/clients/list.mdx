@@ -1,0 +1,179 @@
+---
+title: "List Clients"
+api: "GET /api/clients"
+description: "Retrieve all clients for the authenticated user"
+---
+
+## Authentication
+
+Requires authenticated user session.
+
+## Response
+
+Returns an array of client objects, ordered by creation date (newest first).
+
+<ResponseField name="id" type="string">
+  Unique client identifier
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Client name
+</ResponseField>
+
+<ResponseField name="domain" type="string">
+  Client website URL
+</ResponseField>
+
+<ResponseField name="contactName" type="string">
+  Contact person name
+</ResponseField>
+
+<ResponseField name="contactEmail" type="string">
+  Contact email address
+</ResponseField>
+
+<ResponseField name="googleSearchConsoleConnected" type="boolean">
+  Whether Google Search Console is connected
+</ResponseField>
+
+<ResponseField name="googleAnalyticsConnected" type="boolean">
+  Whether Google Analytics is connected
+</ResponseField>
+
+<ResponseField name="searchConsolePropertyUrl" type="string">
+  Selected Search Console property URL
+</ResponseField>
+
+<ResponseField name="googleAnalyticsPropertyId" type="string">
+  Selected Google Analytics 4 property ID
+</ResponseField>
+
+<ResponseField name="ga4PropertyId" type="string">
+  GA4 property ID (alternative field)
+</ResponseField>
+
+<ResponseField name="ga4PropertyName" type="string">
+  GA4 property display name
+</ResponseField>
+
+<ResponseField name="gscSiteUrl" type="string">
+  Search Console site URL
+</ResponseField>
+
+<ResponseField name="gscSiteName" type="string">
+  Search Console site display name
+</ResponseField>
+
+<ResponseField name="lastReportGenerated" type="string">
+  ISO 8601 timestamp of last report generation
+</ResponseField>
+
+<ResponseField name="totalReportsGenerated" type="number">
+  Total number of reports generated for this client
+</ResponseField>
+
+<ResponseField name="googleConnectedAt" type="string">
+  ISO 8601 timestamp when Google was connected
+</ResponseField>
+
+<ResponseField name="createdAt" type="string">
+  ISO 8601 timestamp when client was created
+</ResponseField>
+
+<ResponseField name="updatedAt" type="string">
+  ISO 8601 timestamp when client was last updated
+</ResponseField>
+
+<ResponseField name="reports" type="array">
+  Array containing the most recent report (includes full report object)
+</ResponseField>
+
+## Example Request
+
+```bash cURL
+curl -X GET https://your-domain.com/api/clients \
+  -H "Cookie: next-auth.session-token=..."
+```
+
+```javascript JavaScript
+const response = await fetch('/api/clients');
+const clients = await response.json();
+```
+
+## Example Response
+
+```json 200 Success
+[
+  {
+    "id": "clx1a2b3c4d5e6f7g8h9i0j1k",
+    "name": "Acme Corporation",
+    "domain": "https://acme.com",
+    "contactName": "John Doe",
+    "contactEmail": "john@acme.com",
+    "googleSearchConsoleConnected": true,
+    "googleAnalyticsConnected": true,
+    "searchConsolePropertyUrl": null,
+    "googleAnalyticsPropertyId": null,
+    "gscSiteUrl": "https://acme.com",
+    "gscSiteName": "Acme Corporation",
+    "ga4PropertyId": "123456789",
+    "ga4PropertyName": "Acme GA4 Property",
+    "googleConnectedAt": "2024-03-15T11:00:00.000Z",
+    "lastReportGenerated": "2024-03-20T14:30:00.000Z",
+    "totalReportsGenerated": 5,
+    "createdAt": "2024-03-15T10:30:00.000Z",
+    "updatedAt": "2024-03-20T14:30:00.000Z",
+    "userId": "clx0a1b2c3d4e5f6g7h8i9j0k",
+    "reports": [
+      {
+        "id": "clx9z8y7x6w5v4u3t2s1r0q",
+        "title": "March 2024 Report",
+        "status": "COMPLETED",
+        "pdfUrl": "https://blob.vercel-storage.com/...",
+        "createdAt": "2024-03-20T14:30:00.000Z"
+      }
+    ]
+  },
+  {
+    "id": "clx2b3c4d5e6f7g8h9i0j1k2l",
+    "name": "Beta Industries",
+    "domain": "https://betaindustries.com",
+    "contactName": "Jane Smith",
+    "contactEmail": "jane@betaindustries.com",
+    "googleSearchConsoleConnected": false,
+    "googleAnalyticsConnected": false,
+    "searchConsolePropertyUrl": null,
+    "googleAnalyticsPropertyId": null,
+    "gscSiteUrl": null,
+    "gscSiteName": null,
+    "ga4PropertyId": null,
+    "ga4PropertyName": null,
+    "googleConnectedAt": null,
+    "lastReportGenerated": null,
+    "totalReportsGenerated": 0,
+    "createdAt": "2024-03-14T09:15:00.000Z",
+    "updatedAt": "2024-03-14T09:15:00.000Z",
+    "userId": "clx0a1b2c3d4e5f6g7h8i9j0k",
+    "reports": []
+  }
+]
+```
+
+```json 401 Unauthorized
+{
+  "error": "Unauthorized"
+}
+```
+
+```json 500 Server Error
+{
+  "error": "Failed to fetch clients"
+}
+```
+
+## Notes
+
+- Clients are automatically filtered to only include those owned by the authenticated user
+- Results are ordered by creation date in descending order (newest first)
+- Each client includes their most recent report (if any) via the `reports` array
+- Empty array `[]` is returned if user has no clients

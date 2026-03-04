@@ -1,0 +1,195 @@
+---
+title: "Update Client"
+api: "PUT /api/clients/:id"
+description: "Update an existing client's information"
+---
+
+## Authentication
+
+Requires authenticated user session. User must own the client being updated.
+
+## Path Parameters
+
+<ParamField path="id" type="string" required>
+  The unique identifier of the client to update
+</ParamField>
+
+## Request Body
+
+All fields are optional. Only include fields you want to update.
+
+<ParamField body="name" type="string">
+  Client name (minimum 2 characters if provided)
+</ParamField>
+
+<ParamField body="domain" type="string">
+  Client website domain (must be valid URL if provided)
+</ParamField>
+
+<ParamField body="contactName" type="string">
+  Primary contact person's name
+</ParamField>
+
+<ParamField body="contactEmail" type="string">
+  Primary contact email (must be valid email format if provided)
+</ParamField>
+
+## Response
+
+Returns the updated client object with the most recent report included.
+
+<ResponseField name="id" type="string">
+  Client identifier
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Updated client name
+</ResponseField>
+
+<ResponseField name="domain" type="string">
+  Updated client domain
+</ResponseField>
+
+<ResponseField name="contactName" type="string">
+  Updated contact name
+</ResponseField>
+
+<ResponseField name="contactEmail" type="string">
+  Updated contact email
+</ResponseField>
+
+<ResponseField name="userId" type="string">
+  ID of the user who owns this client
+</ResponseField>
+
+<ResponseField name="googleSearchConsoleConnected" type="boolean">
+  Google Search Console connection status
+</ResponseField>
+
+<ResponseField name="googleAnalyticsConnected" type="boolean">
+  Google Analytics connection status
+</ResponseField>
+
+<ResponseField name="createdAt" type="string">
+  ISO 8601 timestamp when client was created
+</ResponseField>
+
+<ResponseField name="updatedAt" type="string">
+  ISO 8601 timestamp reflecting the update
+</ResponseField>
+
+<ResponseField name="reports" type="array">
+  Array containing the most recent report (if any)
+</ResponseField>
+
+## Validation Rules
+
+- **name**: Minimum 2 characters (if provided)
+- **domain**: Must be a valid URL format (if provided)
+- **contactEmail**: Must be valid email format (if provided)
+
+## Error Responses
+
+<ResponseField name="error" type="string">
+  Error message describing what went wrong
+</ResponseField>
+
+<ResponseField name="details" type="array">
+  Validation error details (400 errors)
+</ResponseField>
+
+## Example Request
+
+```bash cURL
+curl -X PUT https://your-domain.com/api/clients/clx1a2b3c4d5e6f7g8h9i0j1k \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=..." \
+  -d '{
+    "name": "Acme Corp (Updated)",
+    "contactEmail": "newemail@acme.com"
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('/api/clients/clx1a2b3c4d5e6f7g8h9i0j1k', {
+  method: 'PUT',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    name: 'Acme Corp (Updated)',
+    contactEmail: 'newemail@acme.com'
+  })
+});
+
+const updatedClient = await response.json();
+```
+
+## Example Response
+
+```json 200 Success
+{
+  "id": "clx1a2b3c4d5e6f7g8h9i0j1k",
+  "name": "Acme Corp (Updated)",
+  "domain": "https://acme.com",
+  "contactName": "John Doe",
+  "contactEmail": "newemail@acme.com",
+  "userId": "clx0a1b2c3d4e5f6g7h8i9j0k",
+  "googleSearchConsoleConnected": true,
+  "googleAnalyticsConnected": true,
+  "searchConsolePropertyUrl": "https://acme.com",
+  "googleAnalyticsPropertyId": "123456789",
+  "gscSiteUrl": "https://acme.com",
+  "gscSiteName": "Acme Corporation",
+  "ga4PropertyId": "123456789",
+  "ga4PropertyName": "Acme GA4 Property",
+  "googleConnectedAt": "2024-03-15T11:00:00.000Z",
+  "lastReportGenerated": "2024-03-20T14:30:00.000Z",
+  "totalReportsGenerated": 5,
+  "createdAt": "2024-03-15T10:30:00.000Z",
+  "updatedAt": "2024-03-21T16:45:00.000Z",
+  "reports": [
+    {
+      "id": "clx9z8y7x6w5v4u3t2s1r0q",
+      "title": "March 2024 Report",
+      "status": "COMPLETED",
+      "pdfUrl": "https://blob.vercel-storage.com/...",
+      "createdAt": "2024-03-20T14:30:00.000Z"
+    }
+  ]
+}
+```
+
+```json 400 Validation Error
+{
+  "error": "Validation error",
+  "details": [
+    {
+      "code": "invalid_string",
+      "validation": "email",
+      "message": "Must be a valid email",
+      "path": ["contactEmail"]
+    }
+  ]
+}
+```
+
+```json 404 Not Found
+{
+  "error": "Client not found or unauthorized"
+}
+```
+
+```json 401 Unauthorized
+{
+  "error": "Unauthorized"
+}
+```
+
+## Notes
+
+- Only the client owner can update client information
+- Attempting to update a non-existent client or another user's client returns 404
+- Partial updates are supported - only send fields you want to change
+- The `updatedAt` timestamp is automatically updated on each change
+- Google connection fields (tokens, property IDs) cannot be updated via this endpoint

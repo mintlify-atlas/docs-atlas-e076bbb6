@@ -1,0 +1,488 @@
+---
+title: Search Console API
+description: Complete reference for the Google Search Console client implementation in Reportr
+---
+
+## Overview
+
+The Search Console client provides methods to fetch comprehensive search performance data from Google Search Console API v1. It handles authentication, rate limiting, and error recovery automatically.
+
+## Installation
+
+```typescript
+import { searchConsoleClient } from '@/lib/google/search-console';
+```
+
+## Class: SearchConsoleClient
+
+### getPerformanceData()
+
+Fetches comprehensive performance data for a specified date range.
+
+```typescript
+async getPerformanceData(
+  siteUrl: string,
+  accessToken: string,
+  startDate: string,
+  endDate: string
+): Promise<SearchConsoleData>
+```
+
+**Parameters:**
+- `siteUrl` - Full site URL with protocol (e.g., `https://example.com/`)
+- `accessToken` - Valid Google OAuth access token
+- `startDate` - Start date in `YYYY-MM-DD` format
+- `endDate` - End date in `YYYY-MM-DD` format
+
+**Returns:**
+```typescript
+{
+  totalClicks: number;
+  totalImpressions: number;
+  averagePosition: number;  // Rounded to 1 decimal
+  averageCTR: number;        // Percentage (0-100)
+  topKeywords: KeywordPerformance[];
+  topPages: PagePerformance[];
+  dailyData: DailySearchConsoleData[];
+  dateRange: {
+    startDate: string;
+    endDate: string;
+  };
+}
+```
+
+**Example Response:**
+```json
+{
+  "totalClicks": 15420,
+  "totalImpressions": 234560,
+  "averagePosition": 12.4,
+  "averageCTR": 6.57,
+  "topKeywords": [
+    {
+      "keyword": "seo reporting tool",
+      "clicks": 1234,
+      "impressions": 12340,
+      "ctr": 10.0,
+      "position": 3.2
+    }
+  ],
+  "topPages": [
+    {
+      "page": "https://example.com/blog/seo-guide",
+      "clicks": 2340,
+      "impressions": 23400,
+      "ctr": 10.0,
+      "position": 4.1
+    }
+  ],
+  "dailyData": [
+    {
+      "date": "2026-03-01",
+      "clicks": 512,
+      "impressions": 7819,
+      "ctr": 6.55,
+      "position": 12.1
+    }
+  ],
+  "dateRange": {
+    "startDate": "2026-02-01",
+    "endDate": "2026-03-01"
+  }
+}
+```
+
+**Error Handling:**
+
+Throws `ReportGenerationError` with:
+- `401` - Authentication expired, requires reauthentication
+- `403` - API quota exceeded
+- `429` - Rate limit exceeded (retryable)
+- `500+` - Server errors (retryable)
+
+---
+
+### getTopKeywords()
+
+Fetches top performing keywords for the last 30 days.
+
+```typescript
+async getTopKeywords(
+  siteUrl: string,
+  accessToken: string,
+  limit: number = 10
+): Promise<KeywordPerformance[]>
+```
+
+**Parameters:**
+- `siteUrl` - Full site URL with protocol
+- `accessToken` - Valid Google OAuth access token
+- `limit` - Number of keywords to return (default: 10)
+
+**Returns:**
+```typescript
+KeywordPerformance[] = [
+  {
+    keyword: string;
+    clicks: number;
+    impressions: number;
+    ctr: number;      // Percentage (0-100)
+    position: number; // Average position
+  }
+]
+```
+
+**Example:**
+```typescript
+const keywords = await searchConsoleClient.getTopKeywords(
+  'https://example.com/',
+  accessToken,
+  20  // Top 20 keywords
+);
+```
+
+---
+
+### getTopPages()
+
+Fetches top performing pages from organic search.
+
+```typescript
+async getTopPages(
+  siteUrl: string,
+  accessToken: string,
+  limit: number = 10
+): Promise<PagePerformance[]>
+```
+
+**Parameters:**
+- `siteUrl` - Full site URL with protocol
+- `accessToken` - Valid Google OAuth access token
+- `limit` - Number of pages to return (default: 10)
+
+**Returns:**
+```typescript
+PagePerformance[] = [
+  {
+    page: string;      // Full URL
+    clicks: number;
+    impressions: number;
+    ctr: number;       // Percentage (0-100)
+    position: number;  // Average position
+  }
+]
+```
+
+---
+
+### getPerformanceComparison()
+
+Compares performance between two time periods.
+
+```typescript
+async getPerformanceComparison(
+  siteUrl: string,
+  accessToken: string,
+  currentStartDate: string,
+  currentEndDate: string,
+  previousStartDate: string,
+  previousEndDate: string
+): Promise<PerformanceComparison>
+```
+
+**Returns:**
+```typescript
+{
+  current: {
+    clicks: number;
+    impressions: number;
+    ctr: number;
+    position: number;
+  };
+  previous: {
+    clicks: number;
+    impressions: number;
+    ctr: number;
+    position: number;
+  };
+  changes: {
+    clicksChange: number;      // Percentage change
+    impressionsChange: number; // Percentage change
+    ctrChange: number;         // Percentage change
+    positionChange: number;    // Percentage change (negative = improvement)
+  };
+}
+```
+
+**Example Response:**
+```json
+{
+  "current": {
+    "clicks": 15420,
+    "impressions": 234560,
+    "ctr": 6.57,
+    "position": 12.4
+  },
+  "previous": {
+    "clicks": 14200,
+    "impressions": 220000,
+    "ctr": 6.45,
+    "position": 13.2
+  },
+  "changes": {
+    "clicksChange": 8.6,
+    "impressionsChange": 6.6,
+    "ctrChange": 1.9,
+    "positionChange": -6.1
+  }
+}
+```
+
+---
+
+### getDailyPerformanceData()
+
+Fetches daily time-series data for charts.
+
+```typescript
+async getDailyPerformanceData(
+  siteUrl: string,
+  accessToken: string,
+  startDate: string,
+  endDate: string
+): Promise<DailySearchConsoleData[]>
+```
+
+**Returns:**
+```typescript
+DailySearchConsoleData[] = [
+  {
+    date: string;      // YYYY-MM-DD
+    clicks: number;
+    impressions: number;
+    ctr: number;       // Percentage (0-100)
+    position: number;
+  }
+]
+```
+
+Results are sorted by date in ascending order.
+
+---
+
+### getKeywordPageMapping()
+
+Fetches keyword-to-page relationships for cross-referencing with Analytics.
+
+```typescript
+async getKeywordPageMapping(
+  siteUrl: string,
+  accessToken: string,
+  startDate: string,
+  endDate: string
+): Promise<Array<KeywordPageMapping>>
+```
+
+**Returns:**
+```typescript
+[
+  {
+    keyword: string;
+    page: string;
+    clicks: number;
+    impressions: number;
+    position: number;
+  }
+]
+```
+
+Limited to top 100 keyword-page combinations.
+
+---
+
+### getVerifiedSites()
+
+Lists all verified sites accessible to the user.
+
+```typescript
+async getVerifiedSites(accessToken: string): Promise<string[]>
+```
+
+**Returns:** Array of site URLs (e.g., `['https://example.com/', 'sc-domain:example.com']`)
+
+**Example:**
+```typescript
+const sites = await searchConsoleClient.getVerifiedSites(accessToken);
+// ['https://example.com/', 'https://blog.example.com/']
+```
+
+---
+
+### validateSiteAccess()
+
+Validates that a site URL is accessible with current credentials.
+
+```typescript
+async validateSiteAccess(
+  siteUrl: string,
+  accessToken: string
+): Promise<boolean>
+```
+
+**Returns:** `true` if site is accessible, `false` otherwise
+
+---
+
+## Static Methods
+
+### formatSiteUrl()
+
+Formats a domain string into a valid Search Console site URL.
+
+```typescript
+static formatSiteUrl(domain: string): string
+```
+
+**Examples:**
+```typescript
+SearchConsoleClient.formatSiteUrl('example.com');
+// 'https://example.com/'
+
+SearchConsoleClient.formatSiteUrl('https://example.com');
+// 'https://example.com/'
+
+SearchConsoleClient.formatSiteUrl('http://example.com/');
+// 'http://example.com/'
+```
+
+---
+
+## Error Handling
+
+All methods use automatic retry with exponential backoff for transient errors:
+
+```typescript
+import { retryWithBackoff, ReportGenerationError } from './error-handling';
+
+try {
+  const data = await searchConsoleClient.getPerformanceData(...);
+} catch (error) {
+  if (error instanceof ReportGenerationError) {
+    console.error(`Service: ${error.service}`);
+    console.error(`Status: ${error.statusCode}`);
+    console.error(`Message: ${error.message}`);
+    console.error(`Retryable: ${error.retryable}`);
+    console.error(`Needs Reauth: ${error.needsReauth}`);
+  }
+}
+```
+
+**Retry Logic:**
+- Maximum 3 retry attempts
+- Exponential backoff: 1s, 2s, 4s (with jitter)
+- Only retries on 429 (rate limit) and 5xx errors
+- Immediately fails on 401 (auth) and 403 (quota)
+
+---
+
+## Rate Limiting
+
+Google Search Console API quotas:
+- **Requests per day:** 2,000 per project
+- **Requests per 100 seconds:** 1,200 per project
+- **Queries per day (per property):** Unlimited
+
+**Best Practices:**
+1. Batch related queries using `Promise.all()`
+2. Cache results when possible
+3. Use date ranges efficiently (max 16 months)
+4. Handle 429 errors with exponential backoff
+
+---
+
+## Authentication
+
+Requires Google OAuth 2.0 with the following scope:
+
+```
+https://www.googleapis.com/auth/webmasters.readonly
+```
+
+Access tokens expire after 1 hour. The client automatically handles token refresh when needed.
+
+---
+
+## Date Formats
+
+All date parameters use ISO 8601 format: `YYYY-MM-DD`
+
+**Valid Examples:**
+- `2026-03-01`
+- `2026-01-15`
+
+**Invalid Examples:**
+- `03/01/2026` (US format)
+- `2026-3-1` (missing leading zeros)
+- `2026-03-01T00:00:00Z` (includes time)
+
+---
+
+## Complete Usage Example
+
+```typescript
+import { searchConsoleClient } from '@/lib/google/search-console';
+import { SearchConsoleData } from '@/types/google-api';
+
+async function generateSearchReport(
+  siteUrl: string,
+  accessToken: string
+): Promise<void> {
+  try {
+    // Get comprehensive performance data
+    const data: SearchConsoleData = await searchConsoleClient.getPerformanceData(
+      siteUrl,
+      accessToken,
+      '2026-02-01',
+      '2026-03-01'
+    );
+
+    console.log(`Total Clicks: ${data.totalClicks}`);
+    console.log(`Average Position: ${data.averagePosition}`);
+    console.log(`Top Keyword: ${data.topKeywords[0]?.keyword}`);
+    console.log(`Daily Data Points: ${data.dailyData.length}`);
+
+    // Get period comparison
+    const comparison = await searchConsoleClient.getPerformanceComparison(
+      siteUrl,
+      accessToken,
+      '2026-02-01',
+      '2026-03-01',
+      '2026-01-01',
+      '2026-01-31'
+    );
+
+    console.log(`Clicks Change: ${comparison.changes.clicksChange}%`);
+    console.log(`Position Change: ${comparison.changes.positionChange}%`);
+
+  } catch (error) {
+    if (error instanceof ReportGenerationError) {
+      if (error.needsReauth) {
+        console.error('Please reconnect your Google account');
+      } else if (error.retryable) {
+        console.error('Temporary error, please retry');
+      } else {
+        console.error(`Error: ${error.message}`);
+      }
+    }
+  }
+}
+```
+
+---
+
+## Related Resources
+
+- [Google Search Console API Documentation](https://developers.google.com/webmaster-tools/search-console-api-original)
+- [Analytics API Reference](/api/google/analytics)
+- [PageSpeed API Reference](/api/google/pagespeed)
+- [Google APIs Setup](/guides/google-apis-setup)

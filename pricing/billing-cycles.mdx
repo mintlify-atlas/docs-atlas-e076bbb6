@@ -1,0 +1,317 @@
+---
+title: 'Billing Cycles'
+description: 'How Reportr tracks usage with 30-day rolling billing cycles for fair and predictable limits'
+---
+
+Reportr uses **30-day rolling billing cycles** to track report generation limits fairly. This system ensures consistent usage tracking regardless of calendar months, eliminating confusion around month-end resets.
+
+## How Billing Cycles Work
+
+### 30-Day Rolling Window
+
+Unlike traditional calendar-month billing, Reportr uses a personal 30-day cycle for each user:
+
+- **Cycle Start**: Begins when you subscribe or when previous cycle ends
+- **Cycle Duration**: Exactly 30 days (720 hours)
+- **Cycle End**: Automatically resets after 30 days
+- **Tracking**: Reports counted only within current cycle
+
+<Info>
+  Your billing cycle is independent of calendar months. If you subscribe on January 15th, your cycle runs January 15 - February 14, February 14 - March 16, etc.
+</Info>
+
+### Example Timeline
+
+```
+Subscription Date: March 1, 2024
+
+┌─────────────────────────────────────┐
+│  Cycle 1: March 1 - March 31       │
+│  Reports used: 18 / 25              │
+└─────────────────────────────────────┘
+         ↓ Automatic reset at midnight
+┌─────────────────────────────────────┐
+│  Cycle 2: March 31 - April 30      │
+│  Reports used: 0 / 25 (fresh start)│
+└─────────────────────────────────────┘
+```
+
+## Cycle Initialization
+
+When you create a Reportr account, the system automatically initializes your billing cycle:
+
+```typescript
+// From src/lib/billing-cycle.ts:134-150
+export async function initializeBillingCycle(userId: string): Promise<void> {
+  const now = new Date();
+  const cycleEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      billingCycleStart: now,
+      billingCycleEnd: cycleEnd,
+    }
+  });
+}
+```
+
+**What happens:**
+1. `billingCycleStart` set to current timestamp
+2. `billingCycleEnd` calculated as start + 30 days
+3. Values stored in database for tracking
+4. Report counter starts at zero
+
+## Automatic Cycle Resets
+
+### Reset Detection
+
+Every time you generate a report or check usage, the system automatically checks if your cycle needs resetting:
+
+```typescript
+// From src/lib/billing-cycle.ts:20-60
+export async function checkAndResetBillingCycle(userId: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { billingCycleStart: true, billingCycleEnd: true }
+  });
+
+  const now = new Date();
+  
+  if (!user.billingCycleEnd || now > user.billingCycleEnd) {
+    const newCycleStart = now;
+    const newCycleEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        billingCycleStart: newCycleStart,
+        billingCycleEnd: newCycleEnd,
+      }
+    });
+    
+    return true; // Cycle was reset
+  }
+  
+  return false; // No reset needed
+}
+```
+
+### Reset Process
+
+<Steps>
+  <Step title="Check Current Time">
+    System compares current timestamp to `billingCycleEnd`
+  </Step>
+  
+  <Step title="Detect Expiration">
+    If current time > cycle end, reset is triggered
+  </Step>
+  
+  <Step title="Calculate New Dates">
+    New cycle start = now, new cycle end = now + 30 days
+  </Step>
+  
+  <Step title="Update Database">
+    User record updated with new cycle boundaries
+  </Step>
+  
+  <Step title="Reset Counters">
+    Report count automatically resets (queries only count reports within new cycle)
+  </Step>
+</Steps>
+
+<Warning>
+  Cycle resets are **automatic and immediate**. You don't need to manually trigger resets or wait for processing.
+</Warning>
+
+## Report Counting
+
+### Cycle-Aware Counting
+
+When checking if you can generate a report, the system counts only reports created within your current cycle:
+
+```typescript
+// From src/lib/billing-cycle.ts:102-114
+export async function getReportsInCurrentCycle(userId: string): Promise<number> {
+  const cycleInfo = await getBillingCycleInfo(userId);
+
+  return await prisma.report.count({
+    where: {
+      userId,
+      createdAt: {
+        gte: cycleInfo.cycleStart,  // Greater than or equal to cycle start
+        lt: cycleInfo.cycleEnd,      // Less than cycle end
+      },
+    },
+  });
+}
+```
+
+**Query logic:**
+1. Fetch current cycle start and end dates
+2. Count reports where `createdAt` is within cycle boundaries
+3. Reports from previous cycles are **not** counted
+4. Future-dated reports (if any) are excluded
+
+### Example Counting
+
+```
+Current Cycle: March 1 - March 31
+Plan Limit: 25 reports/month
+
+Reports created:
+- Feb 28: Report A (not counted - before cycle)
+- March 5: Report B (counted)
+- March 12: Report C (counted)
+- March 28: Report D (counted)
+- April 2: Report E (not counted - after cycle)
+
+Current usage: 3 / 25
+```
+
+## Viewing Cycle Information
+
+### Dashboard Display
+
+Your dashboard shows real-time cycle information:
+
+- **Cycle start date**: When current cycle began
+- **Cycle end date**: When it will reset
+- **Days remaining**: Countdown to reset
+- **Reports used**: Current cycle consumption
+- **Reports remaining**: Available in current cycle
+
+### API Response
+
+```json
+{
+  "cycleStart": "2024-03-01T00:00:00.000Z",
+  "cycleEnd": "2024-03-31T00:00:00.000Z",
+  "daysRemaining": 12,
+  "cycleWasReset": false,
+  "reportsUsed": 18,
+  "reportsLimit": 25,
+  "reportsRemaining": 7,
+  "utilizationPercentage": 72
+}
+```
+
+**Response fields explained:**
+- `cycleStart`: Beginning of current 30-day window
+- `cycleEnd`: When cycle expires and resets
+- `daysRemaining`: Days until automatic reset
+- `cycleWasReset`: Whether cycle was just reset (true on first check after expiration)
+- `reportsUsed`: Reports generated in current cycle
+- `utilizationPercentage`: Usage as percentage of limit
+
+## Integration with Plan Limits
+
+### Enforcement Flow
+
+The billing cycle system integrates with plan limits:
+
+```typescript
+// From src/lib/plan-limits.ts:89-128
+export async function canGenerateReport(userId: string) {
+  // 1. Get/reset billing cycle if needed
+  const cycleInfo = await getBillingCycleInfo(userId);
+  
+  // 2. Fetch user's plan limits
+  const limits = getPlanLimits(user.plan);
+  
+  // 3. Count reports in current cycle
+  const currentCount = await getReportsInCurrentCycle(userId);
+
+  // 4. Check if limit exceeded
+  if (currentCount >= limits.reportsPerMonth) {
+    return {
+      allowed: false,
+      reason: `You've reached your limit...`,
+      currentCount,
+      limit: limits.reportsPerMonth,
+    };
+  }
+
+  return { allowed: true, currentCount, limit: limits.reportsPerMonth };
+}
+```
+
+**Key benefits:**
+1. **Fair tracking**: Consistent 30-day periods
+2. **Automatic resets**: No manual intervention needed
+3. **Predictable**: Always know when limits renew
+4. **Accurate**: Counts only reports in current cycle
+
+## Database Schema
+
+Billing cycle tracking uses these fields in the `User` model:
+
+```prisma
+model User {
+  id                String    @id @default(cuid())
+  // ... other fields
+  billingCycleStart DateTime  @default(now())
+  billingCycleEnd   DateTime?
+  plan              Plan      @default(FREE)
+  // ... other fields
+}
+```
+
+**Field purposes:**
+- `billingCycleStart`: Timestamp when current cycle began
+- `billingCycleEnd`: Timestamp when current cycle expires
+- `plan`: Current plan tier (determines report limit)
+
+## Subscription Changes
+
+When you upgrade or downgrade plans:
+
+<Accordion title="Immediate Upgrade">
+  - New plan limits apply instantly
+  - Billing cycle **does not** reset
+  - Report count continues from current cycle
+  - Example: If you've used 18/25 reports and upgrade to Professional (75 limit), you immediately have 57 reports remaining in current cycle
+</Accordion>
+
+<Accordion title="Scheduled Downgrade">
+  - Downgrade takes effect at cycle end
+  - Current cycle continues with old limits
+  - New limits apply when cycle resets
+  - Example: Professional user (75 limit) downgrades to Starter (25 limit) mid-cycle. They keep 75-report limit until cycle resets, then drop to 25.
+</Accordion>
+
+<Accordion title="Cancellation">
+  - Access continues until `subscriptionEndDate`
+  - Billing cycle continues until end of paid period
+  - No cycle reset on cancellation
+  - Plan reverts to FREE when subscription ends
+</Accordion>
+
+## Technical Implementation
+
+Billing cycle management is centralized in `src/lib/billing-cycle.ts`:
+
+- `initializeBillingCycle()` - Set up new user cycles
+- `checkAndResetBillingCycle()` - Detect and perform resets
+- `getBillingCycleInfo()` - Retrieve current cycle data
+- `getReportsInCurrentCycle()` - Count usage in current window
+- `getDaysUntilReset()` - Calculate days remaining
+- `getUsageStats()` - Comprehensive usage statistics
+
+**Key files:**
+- `src/lib/billing-cycle.ts` - Core cycle logic
+- `src/lib/plan-limits.ts` - Integration with limits
+- `prisma/schema.prisma` - Database schema
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Plan Limits" icon="gauge" href="/pricing/plan-limits">
+    See detailed limits for each plan tier
+  </Card>
+  
+  <Card title="Upgrading" icon="arrow-up" href="/pricing/upgrading">
+    Learn how to change your plan
+  </Card>
+</CardGroup>

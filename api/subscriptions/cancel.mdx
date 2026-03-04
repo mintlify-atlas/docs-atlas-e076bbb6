@@ -1,0 +1,223 @@
+---
+title: Cancel Subscription
+description: Cancel an active PayPal subscription while maintaining access until billing period ends
+---
+
+## Overview
+
+Cancels an active PayPal subscription. The user retains access to their current plan until the end of the billing period. After cancellation, the account will automatically downgrade to the FREE plan.
+
+## Endpoint
+
+```
+POST /api/subscription/cancel
+```
+
+## Authentication
+
+Requires authenticated session via NextAuth.js. The endpoint automatically retrieves the user ID from the server-side session.
+
+## Request Body
+
+No request body required. The endpoint retrieves subscription information from the authenticated user's session.
+
+## Response
+
+<ResponseField name="success" type="boolean">
+  Indicates if the cancellation was successful
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Human-readable status message
+</ResponseField>
+
+<ResponseField name="accessUntil" type="string">
+  ISO 8601 timestamp indicating when access to the current plan will end
+</ResponseField>
+
+<ResponseField name="currentPlan" type="string">
+  Current plan level (`STARTER`, `PROFESSIONAL`, or `AGENCY`)
+</ResponseField>
+
+<ResponseField name="downgradePlan" type="string">
+  Plan the user will be downgraded to (always `FREE`)
+</ResponseField>
+
+<ResponseField name="alreadyCancelled" type="boolean" optional>
+  Present and `true` if the subscription was already cancelled
+</ResponseField>
+
+## Cancellation Process
+
+When a subscription is cancelled:
+
+1. **Validation**: Verifies user has an active paid subscription
+2. **PayPal Cancellation**: Calls PayPal API to cancel the subscription
+3. **Billing Cycle Detection**: Retrieves `next_billing_time` from PayPal to determine access end date
+4. **Database Update**: Updates user record with:
+   - `subscriptionStatus` set to `cancelled`
+   - `cancelledAt` timestamp
+   - `subscriptionEndDate` set to end of billing period
+   - Current plan retained until end date
+5. **Email Notification**: Sends cancellation confirmation email
+
+## Access Retention
+
+Users retain full access to their current plan features until the `subscriptionEndDate`. After this date:
+
+- Plan automatically downgrades to `FREE`
+- White-label features are disabled
+- Usage limits reset to free tier
+
+## Example Request
+
+```bash
+curl -X POST https://api.reportr.com/api/subscription/cancel \
+  -H "Cookie: next-auth.session-token=..."
+```
+
+## Example Responses
+
+### Success (200 OK)
+
+```json
+{
+  "success": true,
+  "message": "Subscription cancelled successfully",
+  "accessUntil": "2026-04-04T10:00:00.000Z",
+  "currentPlan": "PROFESSIONAL",
+  "downgradePlan": "FREE"
+}
+```
+
+### Already Cancelled (200 OK)
+
+```json
+{
+  "success": true,
+  "message": "Subscription is already cancelled",
+  "accessUntil": "2026-04-04T10:00:00.000Z",
+  "currentPlan": "PROFESSIONAL",
+  "downgradePlan": "FREE",
+  "alreadyCancelled": true
+}
+```
+
+### Error: Unauthorized (401)
+
+```json
+{
+  "error": "Unauthorized"
+}
+```
+
+### Error: User Not Found (404)
+
+```json
+{
+  "error": "User not found"
+}
+```
+
+### Error: No Active Subscription (400)
+
+```json
+{
+  "error": "No active subscription to cancel"
+}
+```
+
+### Error: PayPal Subscription Not Found (400)
+
+```json
+{
+  "error": "Subscription not found in PayPal. Your account has been updated."
+}
+```
+
+### Error: Invalid Subscription State (400)
+
+```json
+{
+  "error": "Subscription cannot be cancelled in its current state"
+}
+```
+
+### Error: Service Unavailable (503)
+
+```json
+{
+  "error": "Payment service temporarily unavailable. Please try again."
+}
+```
+
+## Database Updates
+
+After successful cancellation:
+
+```typescript
+{
+  subscriptionStatus: "cancelled",
+  cancelledAt: "2026-03-04T15:30:00Z",
+  subscriptionEndDate: "2026-04-04T10:00:00Z"
+  // plan remains unchanged until subscriptionEndDate
+}
+```
+
+## Handling Special Cases
+
+### Non-PayPal Subscriptions
+
+For manual or trial subscriptions without a PayPal subscription ID:
+
+- Cancellation is immediate
+- `subscriptionEndDate` set to `billingCycleEnd` or 24 hours from cancellation
+- No PayPal API call is made
+
+### PayPal Subscription Not Found
+
+If the subscription doesn't exist in PayPal but exists in the database:
+
+- User record is automatically updated
+- `subscriptionStatus` set to `inactive`
+- `paypalSubscriptionId` cleared
+- Error response returned with explanation
+
+## Error Recovery
+
+The endpoint includes comprehensive error handling for:
+
+- **Network failures**: Returns 503 with retry message
+- **PayPal API errors**: Maps specific PayPal errors to user-friendly messages
+- **Database conflicts**: Automatically reconciles state mismatches
+- **Access token issues**: Indicates temporary service unavailability
+
+## PayPal API Integration
+
+The endpoint calls the PayPal Subscriptions API:
+
+```typescript
+POST /v1/billing/subscriptions/{subscription_id}/cancel
+{
+  "reason": "User requested cancellation"
+}
+```
+
+Then retrieves subscription details to determine billing cycle:
+
+```typescript
+GET /v1/billing/subscriptions/{subscription_id}
+```
+
+## Implementation Details
+
+**Source**: `src/app/api/subscription/cancel/route.ts:9`
+
+**PayPal Client**: `src/lib/services/paypal-client.ts:201`
+
+**Database Schema**: `prisma/schema.prisma:11` (User model)
+
+## Related Endpoints
+
+- [Activate Subscription](/api/subscriptions/activate) - Activate a new subscription
+- [Webhooks](/api/subscriptions/webhooks) - Handle PayPal webhook events

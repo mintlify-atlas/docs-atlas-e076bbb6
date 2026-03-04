@@ -1,0 +1,335 @@
+---
+title: 'Connecting Clients'
+description: 'Add client websites and connect them to Google Search Console and Analytics 4 properties'
+---
+
+## Overview
+
+Before generating reports, you need to:
+1. Add a client record with their website details
+2. Connect their Google account via OAuth
+3. Select their Search Console property and Analytics property
+
+This guide covers the complete client setup workflow.
+
+## Prerequisites
+
+- [Google APIs configured](/guides/google-apis-setup)
+- An active Reportr subscription (or trial)
+- Google account with access to client's Search Console and Analytics
+
+<Note>
+  **Client Limits by Plan:**
+  - Free: 1 client
+  - Starter: 5 clients
+  - Professional: 15 clients
+  - Agency: 50 clients
+  
+  See `/workspace/source/src/lib/plan-limits.ts:15-43` for plan limits.
+</Note>
+
+## Step 1: Add a New Client
+
+<Steps>
+  <Step title="Navigate to Clients page">
+    From your dashboard, click **Clients** in the sidebar or navigate to `/dashboard/clients`
+  </Step>
+
+  <Step title="Click 'Add Client'">
+    Click the **Add Client** button in the top right corner.
+    
+    <Warning>
+      If you've reached your plan's client limit, you'll see an upgrade prompt instead. See the error message for your current usage.
+    </Warning>
+  </Step>
+
+  <Step title="Fill in client details">
+    **Required fields:**
+    - **Client Name**: The client's business name (min 2 characters)
+    - **Website URL**: Full URL including `https://` (must be valid URL format)
+    
+    **Optional fields:**
+    - **Contact Name**: Client's primary contact person
+    - **Contact Email**: Valid email address for the client
+    
+    <Tip>
+      The website URL must match the domain verified in Google Search Console.
+    </Tip>
+  </Step>
+
+  <Step title="Save the client">
+    Click **Create Client**. The client will be created with a unique ID and appear in your clients list.
+  </Step>
+</Steps>
+
+## Step 2: Connect Google Account
+
+<Steps>
+  <Step title="Start OAuth flow">
+    After creating the client, click **Connect Google Account** on the client card.
+    
+    Alternatively, click the client name → **Settings** → **Connect Google Account**
+  </Step>
+
+  <Step title="Authorize Google access">
+    You'll be redirected to Google's OAuth consent screen. Review the permissions:
+    
+    - **Google Search Console** - Read-only access to search analytics
+    - **Google Analytics** - Read-only access to Analytics data
+    
+    Click **Allow** to grant access.
+    
+    <Note>
+      The OAuth flow is handled by `/workspace/source/src/app/api/auth/google/authorize/route.ts` and the callback is processed at `/workspace/source/src/app/api/auth/google/callback/route.ts`
+    </Note>
+  </Step>
+
+  <Step title="Verify connection">
+    After authorization, you'll be redirected back to the Clients page with a success message.
+    
+    The client card will now show:
+    - ✅ Google account connected
+    - Green "Connected" badge
+    - Connection timestamp
+  </Step>
+</Steps>
+
+### What Happens During OAuth?
+
+When you authorize Google access, Reportr:
+
+1. **Requests OAuth scopes** (see `/workspace/source/src/lib/google/config.ts:3-6`):
+   ```typescript
+   'https://www.googleapis.com/auth/webmasters.readonly'
+   'https://www.googleapis.com/auth/analytics.readonly'
+   ```
+
+2. **Receives tokens** from Google:
+   - Access token (expires in ~1 hour)
+   - Refresh token (used to get new access tokens)
+
+3. **Stores encrypted tokens** in your database:
+   - `googleAccessToken` - Current access token
+   - `googleRefreshToken` - Long-lived refresh token
+   - `googleTokenExpiry` - When access token expires
+   - `googleConnectedAt` - Connection timestamp
+
+4. **Automatically refreshes** access tokens when they expire using the refresh token logic in `/workspace/source/src/lib/google/config.ts:16-32`
+
+## Step 3: Select Search Console Property
+
+<Steps>
+  <Step title="View available properties">
+    After connecting Google, click **Configure Properties** on the client card.
+    
+    Reportr will fetch all Search Console sites accessible with your connected Google account.
+  </Step>
+
+  <Step title="Choose the correct site">
+    Select the Search Console property that matches your client's domain:
+    
+    - `https://example.com` - HTTPS site
+    - `http://example.com` - HTTP site
+    - `sc-domain:example.com` - Domain property (recommended)
+    
+    <Tip>
+      **Domain properties** include all protocols and subdomains. Use these when available for complete data.
+    </Tip>
+  </Step>
+
+  <Step title="Save Search Console configuration">
+    Click **Save** to store the selected property. This updates the client record with:
+    - `gscSiteUrl` - The property URL identifier
+    - `gscSiteName` - Display name for the property
+  </Step>
+</Steps>
+
+## Step 4: Select Analytics 4 Property
+
+<Steps>
+  <Step title="View GA4 properties">
+    In the same configuration screen, Reportr will list all Google Analytics 4 properties you have access to.
+    
+    <Note>
+      Only **GA4 properties** are shown. Universal Analytics (UA) properties are not supported.
+    </Note>
+  </Step>
+
+  <Step title="Select the client's property">
+    Choose the GA4 property that corresponds to this client's website.
+    
+    Properties are listed with:
+    - Property name
+    - Property ID (e.g., `properties/123456789`)
+  </Step>
+
+  <Step title="Save Analytics configuration">
+    Click **Save** to complete the setup. This stores:
+    - `ga4PropertyId` - The GA4 property identifier
+    - `ga4PropertyName` - Display name
+  </Step>
+</Steps>
+
+## Verification
+
+After completing the setup, verify the client is properly configured:
+
+<Steps>
+  <Step title="Check connection status">
+    On the Clients page, the client card should show:
+    - ✅ **Google Connected**
+    - ✅ **Search Console Configured**
+    - ✅ **Analytics Configured**
+  </Step>
+
+  <Step title="Test data fetching">
+    Click **Generate Report** on the client card.
+    
+    If everything is configured correctly:
+    1. Report generation will start
+    2. You'll see "Processing" status
+    3. Data will be fetched from both APIs
+  </Step>
+</Steps>
+
+## Managing Multiple Clients
+
+### Using Different Google Accounts
+
+If your clients use different Google accounts for their properties:
+
+1. **Shared account approach** (recommended):
+   - Have clients grant you Editor access to their Search Console and Analytics
+   - Connect all clients using your agency's Google account
+   - Benefit: Single login, easier management
+
+2. **Individual account approach**:
+   - Disconnect the current Google connection
+   - Re-authorize with a different Google account for each client
+   - Limitation: You need to re-authenticate when switching between clients
+
+### Bulk Client Setup
+
+For agencies with many clients:
+
+<Steps>
+  <Step title="Prepare client list">
+    Create a spreadsheet with:
+    - Client names
+    - Website URLs
+    - Contact information
+    - Search Console property URLs
+    - GA4 property IDs
+  </Step>
+
+  <Step title="Add clients sequentially">
+    Use the UI to add clients one by one, or use the API endpoint:
+    
+    ```bash
+    POST /api/clients
+    Content-Type: application/json
+    
+    {
+      "name": "Client Name",
+      "domain": "https://example.com",
+      "contactName": "John Doe",
+      "contactEmail": "john@example.com"
+    }
+    ```
+    
+    See `/workspace/source/src/app/api/clients/route.ts:18-95` for the implementation.
+  </Step>
+
+  <Step title="Connect Google once">
+    If all clients share the same Google account access, you only need to connect once and select different properties for each client.
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+### "Client not found or unauthorized"
+
+**Problem:** Cannot access a client you created
+
+**Solution:**
+- Ensure you're logged in with the same account that created the client
+- Clients are isolated by user ID for security
+- Check database for `userId` matching in the `clients` table
+
+### No Search Console Sites Found
+
+**Problem:** Property list is empty after connecting Google
+
+**Solution:**
+1. Verify the connected Google account has Search Console access
+2. Check that sites are verified in [Google Search Console](https://search.google.com/search-console)
+3. Grant your Google account Owner or Full User permission
+4. Wait 24 hours after adding a new site to Search Console
+
+### Wrong Analytics Property Listed
+
+**Problem:** Can't find the correct GA4 property
+
+**Solution:**
+1. Confirm the property is GA4, not Universal Analytics
+2. Verify your Google account has at least Viewer access to the property
+3. Check [Google Analytics](https://analytics.google.com) to confirm property exists
+4. Properties may take time to appear after being created
+
+### Token Refresh Failures
+
+**Problem:** "Google account not connected" error after initial connection
+
+**Solution:**
+- Refresh tokens can expire if:
+  - User revokes access in Google Account settings
+  - App is removed from authorized apps
+  - Refresh token hasn't been used for 6 months
+- **Fix:** Disconnect and reconnect the Google account
+- Reportr automatically attempts token refresh (see `/workspace/source/src/lib/google/config.ts:16-32`)
+
+### "Email verification required"
+
+**Problem:** Cannot add clients despite being logged in
+
+**Solution:**
+- Free plan users must verify their email before adding clients
+- Check your inbox for verification email
+- Paid subscription users bypass this requirement
+- See the check in `/workspace/source/src/app/api/clients/route.ts:23-39`
+
+## Client Data Schema
+
+For reference, here's what's stored for each client (from `/workspace/source/prisma/schema.prisma:73-108`):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | String | Unique client identifier |
+| `name` | String | Client business name |
+| `domain` | String | Client website URL |
+| `contactEmail` | String? | Contact email (optional) |
+| `contactName` | String? | Contact name (optional) |
+| `googleRefreshToken` | String? | OAuth refresh token (encrypted) |
+| `googleAccessToken` | String? | Current access token (encrypted) |
+| `googleTokenExpiry` | DateTime? | Token expiration time |
+| `googleConnectedAt` | DateTime? | When Google was connected |
+| `gscSiteUrl` | String? | Search Console property URL |
+| `gscSiteName` | String? | Search Console property name |
+| `ga4PropertyId` | String? | Analytics property ID |
+| `ga4PropertyName` | String? | Analytics property name |
+| `userId` | String | Owner's user ID (for isolation) |
+| `lastReportGenerated` | DateTime? | Last report timestamp |
+| `totalReportsGenerated` | Int | Count of all reports |
+
+## Next Steps
+
+With clients connected, you're ready to generate reports:
+
+<CardGroup cols={2}>
+  <Card title="Generate Reports" icon="file-chart-column" href="/guides/generating-reports">
+    Create AI-powered SEO reports for your clients
+  </Card>
+  <Card title="Customize Branding" icon="palette" href="/guides/customizing-branding">
+    Add your agency's logo and colors to reports
+  </Card>
+</CardGroup>

@@ -1,0 +1,360 @@
+---
+title: 'Environment Variables'
+description: 'Complete reference for all environment variables required to run Reportr'
+---
+
+## Overview
+
+Reportr requires several environment variables to be configured for proper operation. Copy `.env.example` to `.env` and configure all required values.
+
+```bash
+cp .env.example .env
+```
+
+## Required Variables
+
+### Database
+
+<ParamField path="DATABASE_URL" type="string" required>
+  PostgreSQL connection string for the database. Used for direct connections.
+  
+  **Format:** `postgresql://username:password@host:port/database`
+  
+  **Example:** `postgresql://postgres:password@localhost:5432/seo_reportbot`
+</ParamField>
+
+<ParamField path="PRISMA_DATABASE_URL" type="string">
+  Alternative database URL used by Prisma for connection pooling (e.g., via Supabase or PgBouncer).
+  
+  If not specified, Prisma will use `DATABASE_URL`.
+</ParamField>
+
+### Authentication
+
+<ParamField path="NEXTAUTH_SECRET" type="string" required>
+  Secret key used to encrypt NextAuth.js JWT tokens and session data.
+  
+  **Generate with:** `openssl rand -base64 32`
+  
+  **Example:** `your-nextauth-secret-here`
+</ParamField>
+
+<ParamField path="NEXTAUTH_URL" type="string" required>
+  The canonical URL of your application. Used by NextAuth.js for redirects.
+  
+  **Development:** `http://localhost:3000`
+  
+  **Production:** `https://yourdomain.com`
+</ParamField>
+
+<ParamField path="NEXT_PUBLIC_APP_URL" type="string" required>
+  Public-facing URL accessible from the client-side. Must match `NEXTAUTH_URL`.
+  
+  **Example:** `http://localhost:3000`
+</ParamField>
+
+### Google OAuth & APIs
+
+<ParamField path="GOOGLE_CLIENT_ID" type="string" required>
+  OAuth 2.0 Client ID from Google Cloud Console. Used for user authentication and API access.
+  
+  **Get from:** [Google Cloud Console](https://console.cloud.google.com) > APIs & Services > Credentials
+</ParamField>
+
+<ParamField path="GOOGLE_CLIENT_SECRET" type="string" required>
+  OAuth 2.0 Client Secret from Google Cloud Console.
+  
+  **Security:** Never commit this to version control.
+</ParamField>
+
+<ParamField path="GOOGLE_REDIRECT_URI" type="string" required>
+  OAuth callback URL that Google redirects to after authentication.
+  
+  **Example:** `http://localhost:3000/api/auth/callback/google`
+  
+  **Important:** Must match exactly with the URI configured in Google Cloud Console.
+</ParamField>
+
+<ParamField path="PAGESPEED_API_KEY" type="string" required>
+  API key for Google PageSpeed Insights API. Used to fetch performance metrics.
+  
+  **Get from:** [Google Cloud Console](https://console.cloud.google.com) > APIs & Services > Credentials > Create API Key
+</ParamField>
+
+## AI Services
+
+<ParamField path="ANTHROPIC_API_KEY" type="string" required>
+  API key for Anthropic's Claude API. Used to generate AI-powered insights in reports.
+  
+  **Get from:** [Anthropic Console](https://console.anthropic.com)
+  
+  **Format:** `sk-ant-...`
+</ParamField>
+
+## Queue System
+
+<ParamField path="UPSTASH_REDIS_REST_URL" type="string" required>
+  REST API URL for Upstash Redis. Used for background job processing and queue management.
+  
+  **Get from:** [Upstash Console](https://console.upstash.com) after creating a Redis database
+  
+  **Example:** `https://us1-example.upstash.io`
+</ParamField>
+
+<ParamField path="UPSTASH_REDIS_REST_TOKEN" type="string" required>
+  Authentication token for Upstash Redis REST API.
+  
+  **Security:** Keep this secret and never expose in client-side code.
+</ParamField>
+
+## File Storage
+
+<ParamField path="BLOB_READ_WRITE_TOKEN" type="string" required>
+  Vercel Blob storage token for storing generated PDF reports.
+  
+  **Get from:** Vercel Dashboard > Storage > Blob > Create Token
+  
+  **Format:** `vercel_blob_rw_...`
+</ParamField>
+
+## Payment Processing (Optional)
+
+### Stripe
+
+<ParamField path="STRIPE_SECRET_KEY" type="string">
+  Stripe secret key for processing payments and managing subscriptions.
+  
+  **Get from:** [Stripe Dashboard](https://dashboard.stripe.com) > Developers > API Keys
+  
+  **Development:** Use test key `sk_test_...`
+  
+  **Production:** Use live key `sk_live_...`
+</ParamField>
+
+<ParamField path="STRIPE_WEBHOOK_SECRET" type="string">
+  Webhook signing secret for verifying Stripe webhook events.
+  
+  **Get from:** Stripe Dashboard > Developers > Webhooks > Add endpoint
+  
+  **Format:** `whsec_...`
+</ParamField>
+
+### PayPal
+
+<ParamField path="PAYPAL_CLIENT_ID" type="string">
+  PayPal REST API client ID for payment processing.
+  
+  **Get from:** [PayPal Developer Dashboard](https://developer.paypal.com)
+</ParamField>
+
+<ParamField path="PAYPAL_CLIENT_SECRET" type="string">
+  PayPal REST API client secret.
+</ParamField>
+
+<ParamField path="PAYPAL_MODE" type="string">
+  PayPal environment mode.
+  
+  **Options:** `sandbox` (development) or `live` (production)
+  
+  **Default:** `sandbox`
+</ParamField>
+
+<ParamField path="PAYPAL_WEBHOOK_ID" type="string">
+  Webhook ID for verifying PayPal webhook signatures in production.
+  
+  **Get from:** PayPal Developer Dashboard > Apps & Credentials > Webhooks
+</ParamField>
+
+### PayPal Plan IDs
+
+Subscription plan IDs for different tiers. These are server-side only:
+
+<ParamField path="PAYPAL_STARTER_TRIAL_PLAN_ID" type="string">
+  Starter plan with trial period.
+</ParamField>
+
+<ParamField path="PAYPAL_STARTER_DIRECT_PLAN_ID" type="string">
+  Starter plan without trial.
+</ParamField>
+
+<ParamField path="PAYPAL_PRO_TRIAL_PLAN_ID" type="string">
+  Professional plan with trial period.
+</ParamField>
+
+<ParamField path="PAYPAL_PRO_DIRECT_PLAN_ID" type="string">
+  Professional plan without trial.
+</ParamField>
+
+<ParamField path="PAYPAL_AGENCY_TRIAL_PLAN_ID" type="string">
+  Agency plan with trial period.
+</ParamField>
+
+<ParamField path="PAYPAL_AGENCY_DIRECT_PLAN_ID" type="string">
+  Agency plan without trial.
+</ParamField>
+
+### Public PayPal Plan IDs
+
+Client-side accessible plan IDs (prefixed with `NEXT_PUBLIC_`):
+
+<ParamField path="NEXT_PUBLIC_PAYPAL_STARTER_TRIAL_PLAN_ID" type="string">
+  Public version of Starter trial plan ID.
+</ParamField>
+
+<ParamField path="NEXT_PUBLIC_PAYPAL_STARTER_DIRECT_PLAN_ID" type="string">
+  Public version of Starter direct plan ID.
+</ParamField>
+
+<ParamField path="NEXT_PUBLIC_PAYPAL_PRO_TRIAL_PLAN_ID" type="string">
+  Public version of Professional trial plan ID.
+</ParamField>
+
+<ParamField path="NEXT_PUBLIC_PAYPAL_PRO_DIRECT_PLAN_ID" type="string">
+  Public version of Professional direct plan ID.
+</ParamField>
+
+<ParamField path="NEXT_PUBLIC_PAYPAL_AGENCY_TRIAL_PLAN_ID" type="string">
+  Public version of Agency trial plan ID.
+</ParamField>
+
+<ParamField path="NEXT_PUBLIC_PAYPAL_AGENCY_DIRECT_PLAN_ID" type="string">
+  Public version of Agency direct plan ID.
+</ParamField>
+
+## Email Service
+
+<ParamField path="RESEND_API_KEY" type="string">
+  API key for Resend email service. Used for sending transactional emails.
+  
+  **Get from:** [Resend Dashboard](https://resend.com)
+  
+  **Format:** `re_...`
+</ParamField>
+
+<ParamField path="FROM_EMAIL" type="string">
+  Email address used as the sender for outgoing emails.
+  
+  **Example:** `hello@reportr.agency`
+  
+  **Note:** Must be verified in Resend dashboard.
+</ParamField>
+
+<ParamField path="REPLY_TO_EMAIL" type="string">
+  Reply-to email address for user responses.
+  
+  **Example:** `support@yourdomain.com`
+</ParamField>
+
+## Security
+
+<ParamField path="CRON_SECRET" type="string">
+  Secret token for authenticating cron job requests. Prevents unauthorized execution.
+  
+  **Generate with:** `openssl rand -base64 32`
+  
+  **Example:** `PiVKrJew9gQyWTohW/LiUV3J+xZPFIC7UkXrqLXoFgI=`
+</ParamField>
+
+## Example .env File
+
+```bash
+# Database
+DATABASE_URL="postgresql://postgres:password@localhost:5432/seo_reportbot"
+
+# NextAuth.js
+NEXTAUTH_SECRET="your-nextauth-secret-here"
+NEXTAUTH_URL="http://localhost:3000"
+NEXT_PUBLIC_APP_URL="http://localhost:3000"
+
+# Google OAuth & APIs
+GOOGLE_CLIENT_ID="your-google-client-id"
+GOOGLE_CLIENT_SECRET="your-google-client-secret"
+GOOGLE_REDIRECT_URI="http://localhost:3000/api/auth/callback/google"
+PAGESPEED_API_KEY="your-pagespeed-api-key"
+
+# AI Services
+ANTHROPIC_API_KEY="sk-ant-your-api-key-here"
+
+# Queue System
+UPSTASH_REDIS_REST_URL="https://..."
+UPSTASH_REDIS_REST_TOKEN="..."
+
+# File Storage
+BLOB_READ_WRITE_TOKEN="vercel_blob_rw_..."
+
+# Cron Security
+CRON_SECRET="your-random-secret-here"
+```
+
+## Environment-Specific Configuration
+
+### Development
+
+For local development:
+
+- Use `http://localhost:3000` for all URL variables
+- Use Stripe test keys (`sk_test_...`)
+- Use PayPal sandbox mode
+- Database can be local PostgreSQL
+
+### Production
+
+For production deployment:
+
+- Use your production domain for URL variables
+- Use Stripe live keys (`sk_live_...`)
+- Set PayPal mode to `live`
+- Use a managed PostgreSQL service (Vercel Postgres, Supabase, etc.)
+- Enable all security features
+- Verify all webhook endpoints are configured
+
+## Security Best Practices
+
+<Warning>
+  Never commit your `.env` file to version control. The `.env.example` file should only contain variable names, not actual values.
+</Warning>
+
+1. **Use strong secrets**: Generate random strings for all secret keys
+2. **Rotate credentials regularly**: Update API keys and secrets periodically
+3. **Limit access**: Only share credentials with team members who need them
+4. **Use environment-specific keys**: Different keys for dev, staging, and production
+5. **Monitor usage**: Check API usage and logs for suspicious activity
+
+## Verifying Configuration
+
+After setting up your environment variables:
+
+1. Restart your development server
+2. Check the application logs for connection errors
+3. Test authentication by signing in with Google
+4. Verify database connectivity with `npm run db:studio`
+5. Test API integrations in the dashboard
+
+## Troubleshooting
+
+### Variable Not Loading
+
+If an environment variable is not being recognized:
+
+1. Verify the variable name matches exactly (case-sensitive)
+2. Restart your development server after changes
+3. Check for syntax errors in `.env` (no spaces around `=`)
+4. Ensure client-side variables start with `NEXT_PUBLIC_`
+
+### Database Connection Failed
+
+If database connection fails:
+
+1. Verify `DATABASE_URL` format is correct
+2. Check PostgreSQL is running
+3. Test connection with `psql` command
+4. Ensure database exists: `createdb seo_reportbot`
+
+### OAuth Errors
+
+If Google OAuth fails:
+
+1. Verify `GOOGLE_REDIRECT_URI` matches Google Cloud Console configuration
+2. Check `NEXTAUTH_URL` and `NEXT_PUBLIC_APP_URL` are identical
+3. Ensure Google OAuth consent screen is configured
+4. Verify all required scopes are enabled

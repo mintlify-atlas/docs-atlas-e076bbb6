@@ -1,0 +1,678 @@
+---
+title: 'Environment Variables'
+description: 'Complete reference for all required and optional environment variables'
+---
+
+# Environment Variables
+
+Reportr requires several environment variables for database connections, authentication, API integrations, and third-party services.
+
+## Quick Reference
+
+<Note>
+  Copy `.env.example` from the repository root to get started:
+  ```bash
+  cp .env.example .env
+  ```
+</Note>
+
+## Required Variables
+
+These variables are **required** for the application to function:
+
+### Database
+
+<ParamField path="DATABASE_URL" type="string" required>
+  PostgreSQL connection string for direct database access (migrations)
+  
+  ```bash
+  DATABASE_URL="postgresql://username:password@host:5432/reportr"
+  ```
+  
+  <Accordion title="Connection string format">
+    ```
+    postgresql://[user]:[password]@[host]:[port]/[database]?[parameters]
+    ```
+    
+    Parameters:
+    - `sslmode=require` - Enforce SSL connection
+    - `connect_timeout=10` - Connection timeout in seconds
+  </Accordion>
+</ParamField>
+
+<ParamField path="PRISMA_DATABASE_URL" type="string">
+  PostgreSQL connection string with connection pooling (runtime queries)
+  
+  ```bash
+  PRISMA_DATABASE_URL="postgresql://username:password@host:6543/reportr?pgbouncer=true"
+  ```
+  
+  <Warning>
+    For serverless deployments (Vercel), use a pooled connection to avoid "too many connections" errors.
+  </Warning>
+</ParamField>
+
+### Authentication
+
+<ParamField path="NEXTAUTH_SECRET" type="string" required>
+  Random secret for encrypting JWTs and session tokens
+  
+  ```bash
+  NEXTAUTH_SECRET="your-random-secret-here-min-32-chars"
+  ```
+  
+  <Accordion title="Generate secure secret">
+    ```bash
+    # Using OpenSSL
+    openssl rand -base64 32
+    
+    # Using Node.js
+    node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+    ```
+  </Accordion>
+</ParamField>
+
+<ParamField path="NEXTAUTH_URL" type="string" required>
+  Public URL of your application
+  
+  ```bash
+  # Development
+  NEXTAUTH_URL="http://localhost:3000"
+  
+  # Production
+  NEXTAUTH_URL="https://reportr.agency"
+  ```
+  
+  <Note>
+    Vercel automatically sets this in production. Only required for local development.
+  </Note>
+</ParamField>
+
+<ParamField path="NEXT_PUBLIC_APP_URL" type="string" required>
+  Client-side accessible app URL (same as NEXTAUTH_URL)
+  
+  ```bash
+  NEXT_PUBLIC_APP_URL="https://reportr.agency"
+  ```
+  
+  <Info>
+    Variables prefixed with `NEXT_PUBLIC_` are accessible in browser JavaScript.
+  </Info>
+</ParamField>
+
+### Google OAuth & APIs
+
+<ParamField path="GOOGLE_CLIENT_ID" type="string" required>
+  Google OAuth client ID for authentication
+  
+  ```bash
+  GOOGLE_CLIENT_ID="123456789-abcdefghijklmnop.apps.googleusercontent.com"
+  ```
+  
+  <Accordion title="Setup instructions">
+    1. Go to [Google Cloud Console](https://console.cloud.google.com)
+    2. Create or select a project
+    3. Enable Google+ API
+    4. Create OAuth 2.0 credentials
+    5. Add authorized redirect URI: `https://yourdomain.com/api/auth/callback/google`
+  </Accordion>
+</ParamField>
+
+<ParamField path="GOOGLE_CLIENT_SECRET" type="string" required>
+  Google OAuth client secret
+  
+  ```bash
+  GOOGLE_CLIENT_SECRET="GOCSPX-abcdefghijklmnopqrstuvwxyz"
+  ```
+</ParamField>
+
+<ParamField path="GOOGLE_REDIRECT_URI" type="string" required>
+  OAuth callback URL for Google authentication
+  
+  ```bash
+  GOOGLE_REDIRECT_URI="https://reportr.agency/api/auth/callback/google"
+  ```
+  
+  <Warning>
+    Must match exactly with the redirect URI configured in Google Cloud Console.
+  </Warning>
+</ParamField>
+
+<ParamField path="PAGESPEED_API_KEY" type="string" required>
+  Google PageSpeed Insights API key for performance data
+  
+  ```bash
+  PAGESPEED_API_KEY="AIzaSyABCDEFGHIJKLMNOPQRSTUVWXYZ1234567"
+  ```
+  
+  <Accordion title="Create API key">
+    1. Go to [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+    2. Click **Create Credentials → API Key**
+    3. Enable **PageSpeed Insights API**
+    4. Restrict key to PageSpeed Insights API only (recommended)
+  </Accordion>
+</ParamField>
+
+### AI Services
+
+<ParamField path="ANTHROPIC_API_KEY" type="string" required>
+  Anthropic Claude API key for generating report insights
+  
+  ```bash
+  ANTHROPIC_API_KEY="sk-ant-api03-abcdefghijklmnopqrstuvwxyz1234567890"
+  ```
+  
+  <Accordion title="Get API key">
+    1. Sign up at [console.anthropic.com](https://console.anthropic.com)
+    2. Go to **API Keys**
+    3. Create a new API key
+    4. Copy and store securely
+    
+    **Pricing**: Claude 3.5 Sonnet costs ~$3 per million input tokens.
+  </Accordion>
+</ParamField>
+
+### Queue System
+
+<ParamField path="UPSTASH_REDIS_REST_URL" type="string" required>
+  Upstash Redis REST API URL for background job queue
+  
+  ```bash
+  UPSTASH_REDIS_REST_URL="https://us1-example-12345.upstash.io"
+  ```
+</ParamField>
+
+<ParamField path="UPSTASH_REDIS_REST_TOKEN" type="string" required>
+  Upstash Redis authentication token
+  
+  ```bash
+  UPSTASH_REDIS_REST_TOKEN="AabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890="
+  ```
+  
+  <Accordion title="Setup Upstash Redis">
+    1. Go to [console.upstash.com](https://console.upstash.com)
+    2. Create a new Redis database
+    3. Select region closest to your deployment
+    4. Copy **REST URL** and **REST Token** from database details
+    
+    **Free tier**: 10,000 commands/day
+  </Accordion>
+</ParamField>
+
+### File Storage
+
+<ParamField path="BLOB_READ_WRITE_TOKEN" type="string" required>
+  Vercel Blob Storage token for PDF file uploads
+  
+  ```bash
+  BLOB_READ_WRITE_TOKEN="vercel_blob_rw_ABCdefGHIjkl123_mnoPQRstuVWXyzAbcdEFghijKLmnopQRSTuvwxYZ"
+  ```
+  
+  <Accordion title="Create Blob token">
+    1. Go to [vercel.com/dashboard/stores](https://vercel.com/dashboard/stores)
+    2. Create a new Blob store
+    3. Link to your project
+    4. Copy the read-write token
+    
+    **Free tier**: 1GB storage, 100GB bandwidth/month
+  </Accordion>
+</ParamField>
+
+### Email Service
+
+<ParamField path="RESEND_API_KEY" type="string" required>
+  Resend API key for sending transactional emails
+  
+  ```bash
+  RESEND_API_KEY="re_AbCdEfGhIj_1234567890KlMnOpQrStUvWxYz"
+  ```
+</ParamField>
+
+<ParamField path="FROM_EMAIL" type="string" required>
+  Sender email address for transactional emails
+  
+  ```bash
+  FROM_EMAIL="hello@reportr.agency"
+  ```
+  
+  <Note>
+    Must be a verified domain in Resend dashboard.
+  </Note>
+</ParamField>
+
+<ParamField path="REPLY_TO_EMAIL" type="string" required>
+  Reply-to email address for customer responses
+  
+  ```bash
+  REPLY_TO_EMAIL="support@reportr.agency"
+  ```
+</ParamField>
+
+## Optional Variables
+
+These variables are optional but enable additional features:
+
+### Payment Processing
+
+<ParamField path="PAYPAL_CLIENT_ID" type="string">
+  PayPal REST API client ID for subscription payments
+  
+  ```bash
+  PAYPAL_CLIENT_ID="AabCdefGHIjklMNOpqRSTuvWXyzABcDEFghiJKLmnOPqrsTUvwxYZ1234567890"
+  ```
+</ParamField>
+
+<ParamField path="PAYPAL_CLIENT_SECRET" type="string">
+  PayPal REST API client secret
+  
+  ```bash
+  PAYPAL_CLIENT_SECRET="EabCdefGHIjklMNOpqRSTuvWXyzABcDEFghiJKLmnOPqrsTUvwxYZ1234567890"
+  ```
+</ParamField>
+
+<ParamField path="PAYPAL_MODE" type="string" default="sandbox">
+  PayPal environment mode
+  
+  ```bash
+  # Development
+  PAYPAL_MODE="sandbox"
+  
+  # Production
+  PAYPAL_MODE="live"
+  ```
+</ParamField>
+
+<ParamField path="PAYPAL_WEBHOOK_ID" type="string">
+  PayPal webhook ID for signature verification
+  
+  ```bash
+  PAYPAL_WEBHOOK_ID="1AB23456CD789012E"
+  ```
+  
+  <Accordion title="Get webhook ID">
+    1. Go to [PayPal Developer Dashboard](https://developer.paypal.com/dashboard)
+    2. Navigate to **Apps & Credentials → Webhooks**
+    3. Create webhook with URL: `https://yourdomain.com/api/webhooks/paypal`
+    4. Select event types:
+       - `BILLING.SUBSCRIPTION.CREATED`
+       - `BILLING.SUBSCRIPTION.UPDATED`
+       - `BILLING.SUBSCRIPTION.CANCELLED`
+       - `PAYMENT.SALE.COMPLETED`
+    5. Copy the Webhook ID
+  </Accordion>
+</ParamField>
+
+### PayPal Plan IDs
+
+These configure subscription plans:
+
+<ParamField path="PAYPAL_STARTER_TRIAL_PLAN_ID" type="string">
+  Starter plan with 7-day trial
+  
+  ```bash
+  PAYPAL_STARTER_TRIAL_PLAN_ID="P-0X464499YG9822634NEQJ5XQ"
+  ```
+</ParamField>
+
+<ParamField path="PAYPAL_STARTER_DIRECT_PLAN_ID" type="string">
+  Starter plan without trial
+  
+  ```bash
+  PAYPAL_STARTER_DIRECT_PLAN_ID="P-6PJ50716H4431863PNEQKBLQ"
+  ```
+</ParamField>
+
+<ParamField path="PAYPAL_PRO_TRIAL_PLAN_ID" type="string">
+  Professional plan with 7-day trial
+  
+  ```bash
+  PAYPAL_PRO_TRIAL_PLAN_ID="P-09P26662R8680522DNEQJ7XY"
+  ```
+</ParamField>
+
+<ParamField path="PAYPAL_PRO_DIRECT_PLAN_ID" type="string">
+  Professional plan without trial
+  
+  ```bash
+  PAYPAL_PRO_DIRECT_PLAN_ID="P-90W906144W5364313NEQKB5I"
+  ```
+</ParamField>
+
+<ParamField path="PAYPAL_AGENCY_TRIAL_PLAN_ID" type="string">
+  Agency plan with 7-day trial
+  
+  ```bash
+  PAYPAL_AGENCY_TRIAL_PLAN_ID="P-7SU477161L382370MNEQKCQQ"
+  ```
+</ParamField>
+
+<ParamField path="PAYPAL_AGENCY_DIRECT_PLAN_ID" type="string">
+  Agency plan without trial
+  
+  ```bash
+  PAYPAL_AGENCY_DIRECT_PLAN_ID="P-0KW62605U4011430FNEQKDCY"
+  ```
+</ParamField>
+
+### Client-Side PayPal Plan IDs
+
+<Note>
+  These are duplicates of server-side plan IDs but accessible in browser JavaScript (prefixed with `NEXT_PUBLIC_`).
+</Note>
+
+<ParamField path="NEXT_PUBLIC_PAYPAL_STARTER_TRIAL_PLAN_ID" type="string">
+  ```bash
+  NEXT_PUBLIC_PAYPAL_STARTER_TRIAL_PLAN_ID="P-0X464499YG9822634NEQJ5XQ"
+  ```
+</ParamField>
+
+<ParamField path="NEXT_PUBLIC_PAYPAL_STARTER_DIRECT_PLAN_ID" type="string">
+  ```bash
+  NEXT_PUBLIC_PAYPAL_STARTER_DIRECT_PLAN_ID="P-6PJ50716H4431863PNEQKBLQ"
+  ```
+</ParamField>
+
+<ParamField path="NEXT_PUBLIC_PAYPAL_PRO_TRIAL_PLAN_ID" type="string">
+  ```bash
+  NEXT_PUBLIC_PAYPAL_PRO_TRIAL_PLAN_ID="P-09P26662R8680522DNEQJ7XY"
+  ```
+</ParamField>
+
+<ParamField path="NEXT_PUBLIC_PAYPAL_PRO_DIRECT_PLAN_ID" type="string">
+  ```bash
+  NEXT_PUBLIC_PAYPAL_PRO_DIRECT_PLAN_ID="P-90W906144W5364313NEQKB5I"
+  ```
+</ParamField>
+
+<ParamField path="NEXT_PUBLIC_PAYPAL_AGENCY_TRIAL_PLAN_ID" type="string">
+  ```bash
+  NEXT_PUBLIC_PAYPAL_AGENCY_TRIAL_PLAN_ID="P-7SU477161L382370MNEQKCQQ"
+  ```
+</ParamField>
+
+<ParamField path="NEXT_PUBLIC_PAYPAL_AGENCY_DIRECT_PLAN_ID" type="string">
+  ```bash
+  NEXT_PUBLIC_PAYPAL_AGENCY_DIRECT_PLAN_ID="P-0KW62605U4011430FNEQKDCY"
+  ```
+</ParamField>
+
+### Alternative Payment (Stripe)
+
+<ParamField path="STRIPE_SECRET_KEY" type="string">
+  Stripe secret key (alternative to PayPal)
+  
+  ```bash
+  # Test mode
+  STRIPE_SECRET_KEY="sk_test_51ABcdefGHIjklMNOpqrSTUvwxYZ123456789"
+  
+  # Live mode
+  STRIPE_SECRET_KEY="sk_live_51ABcdefGHIjklMNOpqrSTUvwxYZ123456789"
+  ```
+</ParamField>
+
+<ParamField path="STRIPE_WEBHOOK_SECRET" type="string">
+  Stripe webhook signing secret
+  
+  ```bash
+  STRIPE_WEBHOOK_SECRET="whsec_abcdefghijklmnopqrstuvwxyz1234567890"
+  ```
+</ParamField>
+
+### Cron Job Security
+
+<ParamField path="CRON_SECRET" type="string" required>
+  Secret token for authenticating cron job requests
+  
+  ```bash
+  CRON_SECRET="PiVKrJew9gQyWTohW/LiUV3J+xZPFIC7UkXrqLXoFgI="
+  ```
+  
+  <Accordion title="Generate cron secret">
+    ```bash
+    # Using OpenSSL
+    openssl rand -base64 32
+    
+    # Using Node.js
+    node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+    ```
+  </Accordion>
+  
+  <Info>
+    This prevents unauthorized access to cron endpoints like `/api/cron/process-cancellations`.
+  </Info>
+</ParamField>
+
+## Environment-Specific Configuration
+
+### Development (.env.local)
+
+```bash
+# Database
+DATABASE_URL="postgresql://postgres:password@localhost:5432/reportr_dev"
+
+# Auth
+NEXTAUTH_URL="http://localhost:3000"
+NEXT_PUBLIC_APP_URL="http://localhost:3000"
+
+# PayPal
+PAYPAL_MODE="sandbox"
+
+# Email (use test mode)
+RESEND_API_KEY="re_test_abcdefghijklmnopqrstuvwxyz"
+```
+
+### Production (.env.production)
+
+```bash
+# Database (with connection pooling)
+DATABASE_URL="postgresql://user:pass@host:5432/reportr"
+PRISMA_DATABASE_URL="postgresql://user:pass@host:6543/reportr?pgbouncer=true"
+
+# Auth
+NEXTAUTH_URL="https://reportr.agency"
+NEXT_PUBLIC_APP_URL="https://reportr.agency"
+
+# PayPal
+PAYPAL_MODE="live"
+
+# Email (production API key)
+RESEND_API_KEY="re_prod_abcdefghijklmnopqrstuvwxyz"
+```
+
+## Setting Variables in Vercel
+
+### Via Dashboard
+
+<Steps>
+  <Step title="Open project settings">
+    Navigate to **Settings → Environment Variables** in Vercel dashboard
+  </Step>
+  
+  <Step title="Add variable">
+    Click **Add** and enter:
+    - **Key**: Variable name (e.g., `DATABASE_URL`)
+    - **Value**: Variable value
+    - **Environment**: Select Production, Preview, or Development
+  </Step>
+  
+  <Step title="Redeploy">
+    Trigger a new deployment for changes to take effect:
+    ```bash
+    vercel --prod
+    ```
+  </Step>
+</Steps>
+
+### Via CLI
+
+```bash
+# Add single variable
+vercel env add DATABASE_URL production
+
+# Import from .env file
+vercel env pull .env.local
+
+# List all variables
+vercel env ls
+
+# Remove variable
+vercel env rm DATABASE_URL production
+```
+
+## Validation
+
+Reportr validates required environment variables at build time:
+
+```typescript
+// src/lib/env.ts
+const requiredEnvVars = [
+  'DATABASE_URL',
+  'NEXTAUTH_SECRET',
+  'NEXTAUTH_URL',
+  'GOOGLE_CLIENT_ID',
+  'GOOGLE_CLIENT_SECRET',
+  'ANTHROPIC_API_KEY',
+  // ... more
+]
+
+for (const envVar of requiredEnvVars) {
+  if (!process.env[envVar]) {
+    throw new Error(`Missing required environment variable: ${envVar}`)
+  }
+}
+```
+
+<Warning>
+  Build will fail if any required variables are missing.
+</Warning>
+
+## Security Best Practices
+
+<Steps>
+  <Step title="Never commit secrets to Git">
+    Add `.env` to `.gitignore`:
+    ```bash
+    # .gitignore
+    .env
+    .env.local
+    .env.production
+    ```
+  </Step>
+  
+  <Step title="Use different values per environment">
+    - Development: Use test/sandbox credentials
+    - Production: Use live credentials
+    - Rotate production secrets regularly
+  </Step>
+  
+  <Step title="Limit access to production variables">
+    Use Vercel team permissions to restrict who can view/edit production environment variables.
+  </Step>
+  
+  <Step title="Monitor for exposed secrets">
+    Use tools like:
+    - [GitGuardian](https://www.gitguardian.com/) - Scan for exposed secrets
+    - [GitHub Secret Scanning](https://docs.github.com/en/code-security/secret-scanning) - Automatic detection
+  </Step>
+</Steps>
+
+## Deployment Checklist
+
+Before deploying to production, verify:
+
+<Accordion title="Database" icon="database">
+  - [ ] `DATABASE_URL` points to production database
+  - [ ] `PRISMA_DATABASE_URL` uses connection pooling
+  - [ ] Database migrations have been run
+  - [ ] Backups are configured
+</Accordion>
+
+<Accordion title="Authentication" icon="lock">
+  - [ ] `NEXTAUTH_SECRET` is unique and secure (32+ chars)
+  - [ ] `NEXTAUTH_URL` matches production domain
+  - [ ] `GOOGLE_REDIRECT_URI` is configured in Google Console
+  - [ ] OAuth callback URLs are whitelisted
+</Accordion>
+
+<Accordion title="APIs & Integrations" icon="plug">
+  - [ ] `ANTHROPIC_API_KEY` has sufficient credits
+  - [ ] `PAGESPEED_API_KEY` is restricted to PageSpeed API
+  - [ ] `UPSTASH_REDIS_REST_URL` and token are valid
+  - [ ] `BLOB_READ_WRITE_TOKEN` has correct permissions
+  - [ ] `RESEND_API_KEY` domain is verified
+</Accordion>
+
+<Accordion title="Payments" icon="credit-card">
+  - [ ] `PAYPAL_MODE` is set to `live`
+  - [ ] PayPal plan IDs are for production plans
+  - [ ] `PAYPAL_WEBHOOK_ID` is configured
+  - [ ] Webhook endpoint is publicly accessible
+</Accordion>
+
+<Accordion title="Security" icon="shield">
+  - [ ] `CRON_SECRET` is set for cron endpoints
+  - [ ] No secrets are committed to Git
+  - [ ] Production values differ from development
+  - [ ] Access to variables is restricted
+</Accordion>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Variable not found at runtime">
+    **Error**: `process.env.VARIABLE_NAME is undefined`
+    
+    **Solutions**:
+    1. Check variable is set in Vercel dashboard
+    2. Ensure correct environment (Production/Preview/Development)
+    3. Redeploy application after adding variable
+    4. For client-side variables, use `NEXT_PUBLIC_` prefix
+  </Accordion>
+  
+  <Accordion title="Database connection fails">
+    **Error**: `Can't reach database server`
+    
+    **Solutions**:
+    1. Verify `DATABASE_URL` format is correct
+    2. Check database is accessible from Vercel IPs
+    3. Use `PRISMA_DATABASE_URL` with connection pooling
+    4. Ensure database credentials are correct
+  </Accordion>
+  
+  <Accordion title="OAuth redirect mismatch">
+    **Error**: `redirect_uri_mismatch`
+    
+    **Solutions**:
+    1. Match `GOOGLE_REDIRECT_URI` exactly in Google Console
+    2. Include `http://` or `https://` in URI
+    3. No trailing slashes in callback URL
+    4. Case-sensitive matching required
+  </Accordion>
+  
+  <Accordion title="PayPal webhook signature verification fails">
+    **Error**: `Webhook signature verification failed`
+    
+    **Solutions**:
+    1. Verify `PAYPAL_WEBHOOK_ID` is correct
+    2. Check webhook URL in PayPal dashboard matches deployment
+    3. Ensure `PAYPAL_MODE` matches webhook environment (sandbox/live)
+    4. Verify webhook events are enabled
+  </Accordion>
+</AccordionGroup>
+
+## Additional Resources
+
+<CardGroup cols={2}>
+  <Card title="Vercel Deployment" icon="upload" href="/development/deployment/vercel">
+    Deploy to Vercel with environment variables
+  </Card>
+  <Card title="Database Setup" icon="database" href="/development/deployment/database">
+    Configure PostgreSQL database
+  </Card>
+  <Card title=".env.example" icon="file-code" href="https://github.com/yourusername/reportr/blob/main/.env.example">
+    View complete example file
+  </Card>
+  <Card title="Vercel Env Docs" icon="book" href="https://vercel.com/docs/concepts/projects/environment-variables">
+    Official Vercel documentation
+  </Card>
+</CardGroup>

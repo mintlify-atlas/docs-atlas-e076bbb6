@@ -1,0 +1,411 @@
+---
+title: 'Customizing Branding'
+description: 'White-label Reportr with your agency logo, colors, and company information'
+---
+
+## Overview
+
+White-label branding allows you to customize:
+- **Company name** - Appears in dashboard header and reports
+- **Logo** - Your agency logo throughout the platform
+- **Primary color** - Buttons, headers, and accents
+- **Contact information** - Website and support email in reports
+
+Your branding is applied to:
+- Generated PDF reports (client-facing)
+- Dashboard interface (your experience)
+- Report footers and headers
+
+## Prerequisites
+
+<Warning>
+  White-label branding is only available on:
+  - **Professional plan** (included)
+  - **Agency plan** (included)
+  - **Starter plan** with $20/mo white-label add-on
+  - **Trial users** (14-day free access to test white-label features)
+  
+  See `/workspace/source/src/lib/plan-limits.ts:183-204` for access logic.
+</Warning>
+
+## Accessing Branding Settings
+
+<Steps>
+  <Step title="Navigate to Branding Settings">
+    From your dashboard, click **Settings** → **Branding** in the sidebar, or navigate to `/settings/branding`
+  </Step>
+
+  <Step title="Check white-label access">
+    If you don't have white-label access, you'll see an upgrade prompt:
+    
+    - **Free/Starter plan**: "Upgrade to Professional" or "Add White-Label (+$20/mo)"
+    - **Trial users**: White-label settings are unlocked and editable
+    - **Professional/Agency**: Full access included
+  </Step>
+
+  <Step title="Enable white-label mode">
+    Toggle **Enable White Label Branding** to ON.
+    
+    Once enabled, the branding configuration form appears.
+  </Step>
+</Steps>
+
+## Configuration Options
+
+### Company Information
+
+#### Agency Name (Required)
+
+<ParamField path="companyName" type="string" required>
+  Your agency's business name
+  
+  - **Max length**: 50 characters
+  - **Appears in**: Report headers, dashboard header, PDF footers
+  - **Example**: "Acme Digital Marketing"
+  
+  <Warning>
+    This field is required and cannot be empty when white-label is enabled.
+  </Warning>
+</ParamField>
+
+#### Website (Optional)
+
+<ParamField path="website" type="string">
+  Your agency website URL
+  
+  - **Max length**: 100 characters
+  - **Format**: Must be valid URL (e.g., `https://youragency.com`)
+  - **Appears in**: Report footers as clickable link
+  - **Example**: "https://acmedigital.com"
+</ParamField>
+
+#### Support Email (Optional)
+
+<ParamField path="supportEmail" type="string">
+  Contact email for client support
+  
+  - **Max length**: 100 characters
+  - **Format**: Must be valid email address
+  - **Appears in**: Report footers for client inquiries
+  - **Example**: "support@acmedigital.com"
+</ParamField>
+
+### Visual Branding
+
+#### Company Logo (Optional)
+
+<ParamField path="logo" type="file">
+  Your agency logo image
+  
+  - **Accepted formats**: PNG, JPG, GIF, WebP
+  - **Max file size**: 2 MB
+  - **Recommended**: Square logos work best (e.g., 512x512px)
+  - **Display size**: 40x40px in most locations
+  - **Stored as**: Base64-encoded string in database
+  
+  <Tip>
+    Upload a high-resolution square logo for best results across all report sizes.
+  </Tip>
+</ParamField>
+
+**To upload a logo:**
+
+1. Click the upload area or drag and drop an image
+2. Wait for upload to complete
+3. Preview appears in the right panel
+4. Hover over preview and click **Remove** to delete
+
+**Logo validation** (see `/workspace/source/src/app/settings/branding/page.tsx:153-157`):
+- File must be an image type
+- Size must be under 2 MB
+- Invalid files show error toast
+
+#### Primary Color (Required)
+
+<ParamField path="primaryColor" type="string" required>
+  Brand color in HEX format
+  
+  - **Format**: HEX color code (e.g., `#8B5CF6`)
+  - **Default**: `#8B5CF6` (purple)
+  - **Appears in**: Buttons, headers, accents, charts
+  
+  **Quick color options:**
+  - Purple: `#8B5CF6`
+  - Blue: `#3B82F6`
+  - Green: `#10B981`
+  - Orange: `#F59E0B`
+  - Red: `#EF4444`
+  - Indigo: `#6366F1`
+  - Pink: `#EC4899`
+  - Teal: `#14B8A6`
+  
+  **Custom color:**
+  - Click the color picker to choose any color
+  - Enter HEX code directly
+</ParamField>
+
+<Note>
+  All color options are defined in `/workspace/source/src/app/settings/branding/page.tsx:233-242`
+</Note>
+
+## Live Preview
+
+The right panel shows a **live preview** of your branding:
+
+- Updates in real-time as you make changes
+- Shows how your logo and colors appear together
+- Preview includes sample report header and dashboard elements
+- Only visible when white-label mode is enabled
+
+Implementation: See `BrandingPreview` component referenced in `/workspace/source/src/app/settings/branding/page.tsx:558-562`
+
+## Saving Your Branding
+
+<Steps>
+  <Step title="Review your settings">
+    Check that all required fields are filled:
+    - ✅ Agency name entered
+    - ✅ Primary color selected
+    - Optional: Logo uploaded, website/email added
+  </Step>
+
+  <Step title="Click Save Settings">
+    The **Save Settings** button:
+    - Validates all fields before saving
+    - Shows loading state during save
+    - Disabled if white-label mode is off
+    - Uses your primary color when active
+  </Step>
+
+  <Step title="Verify success">
+    On successful save:
+    - ✅ "Branding settings saved successfully!" toast appears
+    - Your profile is updated in the database
+    - Changes apply immediately to new reports
+  </Step>
+</Steps>
+
+## Validation Rules
+
+Branding data is validated before saving (see `/workspace/source/src/app/settings/branding/page.tsx:187-202`):
+
+| Field | Validation | Error Message |
+|-------|-----------|---------------|
+| Company Name | Required, 2-50 chars | "Company name is required" or "Max 50 characters" |
+| Website | Valid URL format | "Must be a valid URL" |
+| Support Email | Valid email format | "Must be a valid email address" |
+| Primary Color | Valid HEX code | "Must be a valid color" |
+| Logo | < 2 MB, valid image | "File too large" or "Invalid file type" |
+
+If validation fails:
+- Error message appears below the field in red
+- Toast shows total number of errors
+- Form cannot be saved until errors are fixed
+
+## How Branding is Applied
+
+### Database Storage
+
+Your branding is stored in the User model (see `/workspace/source/prisma/schema.prisma:11-50`):
+
+```prisma
+model User {
+  id                String   @id @default(cuid())
+  email             String   @unique
+  whiteLabelEnabled Boolean  @default(false)
+  companyName       String?
+  primaryColor      String   @default("#8B5CF6")
+  logo              String?  // Base64-encoded image
+  website           String?
+  supportEmail      String?
+  // ... other fields
+}
+```
+
+### API Endpoint
+
+Branding settings are saved via the profile API:
+
+**Endpoint**: `PATCH /api/user/profile`
+
+**Request body**:
+```json
+{
+  "companyName": "Acme Digital",
+  "website": "https://acmedigital.com",
+  "supportEmail": "support@acmedigital.com",
+  "primaryColor": "#3B82F6",
+  "logo": "data:image/png;base64,...",
+  "whiteLabelEnabled": true
+}
+```
+
+See frontend implementation in `/workspace/source/src/app/settings/branding/page.tsx:204-231`
+
+### Report PDF Generation
+
+When generating reports, Reportr:
+
+1. **Fetches your branding** from the User model
+2. **Checks white-label access** using `canUseWhiteLabel()` function
+3. **If white-label enabled**:
+   - Uses your company name in headers
+   - Applies your primary color to charts and accents
+   - Includes your logo in header/footer
+   - Shows website and support email in footer
+4. **If white-label disabled**:
+   - Uses "Reportr" branding (default)
+   - Shows Reportr logo and colors
+
+## White-Label Access Logic
+
+The `canUseWhiteLabel()` function determines access (from `/workspace/source/src/lib/plan-limits.ts:183-204`):
+
+```typescript
+export function canUseWhiteLabel(user: any): boolean {
+  // PRIORITY 1: Explicitly enabled
+  // (Paid add-on or included in plan)
+  if (user.whiteLabelEnabled === true) {
+    return true;
+  }
+  
+  // PRIORITY 2: Trial users can test white-label
+  const isInTrial = user.trialStartDate && 
+                    user.trialEndDate && 
+                    new Date() < user.trialEndDate;
+  
+  if (isInTrial && ['STARTER', 'PROFESSIONAL', 'AGENCY'].includes(user.plan)) {
+    return true;
+  }
+  
+  // All other cases: no access
+  return false;
+}
+```
+
+**Access scenarios:**
+
+| User Type | White-Label Access | Notes |
+|-----------|-------------------|-------|
+| Free plan | ❌ No | Must upgrade |
+| Starter + add-on | ✅ Yes | `whiteLabelEnabled: true` |
+| Starter without add-on | ❌ No | Can add for $20/mo |
+| Professional | ✅ Yes | Included, `whiteLabelEnabled: true` |
+| Agency | ✅ Yes | Included, `whiteLabelEnabled: true` |
+| Trial users | ✅ Yes (temporary) | Access during trial period |
+
+## Troubleshooting
+
+### Cannot Enable White-Label Toggle
+
+**Problem:** Toggle switch is grayed out
+
+**Solution:**
+- You don't have white-label access on your current plan
+- Click the **Upgrade** or **Add White-Label** button
+- Trial users should have access - check trial hasn't expired
+- Verify `whiteLabelEnabled` field in database
+
+### Logo Not Appearing in Reports
+
+**Problem:** Reports generated without your logo
+
+**Possible causes:**
+
+1. **White-label not enabled**:
+   - Check the toggle is ON
+   - Verify `whiteLabelEnabled: true` in database
+
+2. **Logo file issues**:
+   - Logo may have failed to upload (check for base64 data in database)
+   - Re-upload logo and save settings
+   - Try a smaller image file
+
+3. **Plan restriction**:
+   - Verify you have active white-label access
+   - Check trial hasn't expired
+   - Confirm subscription is active
+
+### Colors Not Updating
+
+**Problem:** Primary color changes don't appear
+
+**Solution:**
+1. Ensure you clicked **Save Settings** after selecting color
+2. Hard refresh browser (Cmd/Ctrl + Shift + R)
+3. Check database `primaryColor` field updated
+4. Generate a new report to see changes (existing reports retain old branding)
+
+### "Max 50 characters" Error
+
+**Problem:** Cannot save company name
+
+**Solution:**
+- Company name is limited to 50 characters for layout reasons
+- Use abbreviations if needed (e.g., "Acme Digital Marketing Agency" → "Acme Digital")
+- Character counter shows remaining characters
+
+### Save Button Disabled
+
+**Problem:** Cannot click Save Settings button
+
+**Possible causes:**
+
+1. **White-label not enabled**: Toggle must be ON first
+2. **No changes made**: Button may be disabled if nothing changed
+3. **Validation errors**: Fix red error messages first
+4. **Currently saving**: Wait for previous save to complete
+
+## Best Practices
+
+### Logo Guidelines
+
+✅ **Do:**
+- Use square or circular logos (1:1 aspect ratio)
+- Upload high-resolution images (512x512 or larger)
+- Use PNG with transparent background for best results
+- Keep file size under 500 KB for fast loading
+
+❌ **Don't:**
+- Use wide/horizontal logos (they'll be cropped)
+- Upload low-resolution images (will appear pixelated)
+- Use images with text that becomes unreadable when small
+
+### Color Selection
+
+✅ **Do:**
+- Choose colors with good contrast against white backgrounds
+- Test color in preview before saving
+- Use your brand's official HEX code for consistency
+- Consider accessibility (avoid low-contrast colors)
+
+❌ **Don't:**
+- Use very light colors (poor visibility)
+- Choose colors that clash with report content
+- Change colors frequently (confuses clients)
+
+### Company Information
+
+✅ **Do:**
+- Use your official registered business name
+- Include professional support email
+- Keep contact information up-to-date
+- Test email and website links after saving
+
+❌ **Don't:**
+- Use personal emails (unprofessional)
+- Include "Inc.", "LLC" unless part of brand identity
+- Use placeholder or fake information
+
+## Next Steps
+
+With your branding configured:
+
+<CardGroup cols={2}>
+  <Card title="Generate Reports" icon="file-chart-column" href="/guides/generating-reports">
+    Create branded PDF reports with your customizations
+  </Card>
+  <Card title="Manage Subscription" icon="credit-card" href="/guides/subscription-management">
+    Upgrade or add white-label to your plan
+  </Card>
+</CardGroup>

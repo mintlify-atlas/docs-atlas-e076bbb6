@@ -1,0 +1,597 @@
+---
+title: Billing Cycle Management
+description: Complete reference for 30-day rolling billing cycle system and usage tracking
+---
+
+# Billing Cycle Management
+
+Reportr implements a 30-day rolling billing cycle system for fair usage tracking across different subscription tiers. This system automatically resets usage limits every 30 days from the user's start date.
+
+## Architecture Overview
+
+### Core Module
+
+**Location:** `src/lib/billing-cycle.ts`
+
+**Purpose:** Manages 30-day rolling billing cycles for report generation limits
+
+**Key Concepts:**
+- **Rolling Cycle** - 30 days from cycle start, not calendar month
+- **Automatic Reset** - Checks and resets on every usage check
+- **Fair Allocation** - Users get full 30 days regardless of signup date
+
+### Database Schema
+
+**User Model Fields:**
+
+```prisma
+model User {
+  id                  String
+  plan                Plan       @default(FREE)
+  billingCycleStart   DateTime
+  billingCycleEnd     DateTime
+  // ... other fields
+}
+
+model Report {
+  userId     String
+  createdAt  DateTime  @default(now())
+  // ... other fields
+}
+
+enum Plan {
+  FREE
+  STARTER
+  PROFESSIONAL
+  AGENCY
+}
+```
+
+## Core Functions
+
+### `checkAndResetBillingCycle()`
+
+Checks if a user's billing cycle needs reset and resets if necessary.
+
+**Location:** `src/lib/billing-cycle.ts:20`
+
+```typescript:src/lib/billing-cycle.ts
+export async function checkAndResetBillingCycle(userId: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      billingCycleStart: true,
+      billingCycleEnd: true,
+    }
+  });
+
+  if (!user) {
+    throw new Error('User not found');
+  }
+
+  const now = new Date();
+  
+  // Check if cycle needs reset
+  if (!user.billingCycleEnd || now > user.billingCycleEnd) {
+    const newCycleStart = now;
+    const newCycleEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        billingCycleStart: newCycleStart,
+        billingCycleEnd: newCycleEnd,
+      }
+    });
+    
+    console.log(`Billing cycle reset for user ${userId}`);
+    return true;
+  }
+  
+  return false;
+}
+```
+
+**Returns:** `true` if cycle was reset, `false` if no reset needed
+
+**When Called:**
+- Before checking usage limits
+- When displaying usage statistics
+- Before creating new reports
+
+### `getBillingCycleInfo()`
+
+Retrieves current billing cycle information for a user.
+
+**Location:** `src/lib/billing-cycle.ts:67`
+
+```typescript:src/lib/billing-cycle.ts
+export interface BillingCycleInfo {
+  cycleStart: Date;
+  cycleEnd: Date;
+  daysRemaining: number;
+  cycleWasReset: boolean;
+}
+
+export async function getBillingCycleInfo(userId: string): Promise<BillingCycleInfo> {
+  // First check and reset if needed
+  const cycleWasReset = await checkAndResetBillingCycle(userId);
+  
+  // Get updated user data
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      billingCycleStart: true,
+      billingCycleEnd: true,
+    }
+  });
+
+  if (!user || !user.billingCycleEnd) {
+    throw new Error('User billing cycle not properly initialized');
+  }
+
+  const now = new Date();
+  const daysRemaining = Math.max(0, Math.ceil(
+    (user.billingCycleEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+  ));
+
+  return {
+    cycleStart: user.billingCycleStart,
+    cycleEnd: user.billingCycleEnd,
+    daysRemaining,
+    cycleWasReset
+  };
+}
+```
+
+**Usage Example:**
+
+```typescript
+const cycleInfo = await getBillingCycleInfo(userId);
+
+console.log(`Cycle: ${cycleInfo.cycleStart} to ${cycleInfo.cycleEnd}`);
+console.log(`Days remaining: ${cycleInfo.daysRemaining}`);
+if (cycleInfo.cycleWasReset) {
+  console.log('🔄 Usage limits have been reset!');
+}
+```
+
+### `getReportsInCurrentCycle()`
+
+Counts reports generated in the current billing cycle.
+
+**Location:** `src/lib/billing-cycle.ts:102`
+
+```typescript:src/lib/billing-cycle.ts
+export async function getReportsInCurrentCycle(userId: string): Promise<number> {
+  const cycleInfo = await getBillingCycleInfo(userId);
+
+  return await prisma.report.count({
+    where: {
+      userId,
+      createdAt: {
+        gte: cycleInfo.cycleStart,
+        lt: cycleInfo.cycleEnd,
+      },
+    },
+  });
+}
+```
+
+**Returns:** Number of reports created in current cycle
+
+**Usage Example:**
+
+```typescript
+const reportsUsed = await getReportsInCurrentCycle(userId);
+const limit = getPlanLimit(user.plan);
+
+if (reportsUsed >= limit) {
+  throw new Error('Report limit reached for this billing cycle');
+}
+```
+
+### `getUsageStats()`
+
+Retrieves comprehensive usage statistics for a user.
+
+**Location:** `src/lib/billing-cycle.ts:167`
+
+```typescript:src/lib/billing-cycle.ts
+export interface UsageStats {
+  reportsUsed: number;
+  reportsLimit: number;
+  reportsRemaining: number;
+  daysRemaining: number;
+  cycleStart: Date;
+  cycleEnd: Date;
+  utilizationPercentage: number;
+}
+
+export async function getUsageStats(userId: string, userPlan: string): Promise<UsageStats> {
+  const cycleInfo = await getBillingCycleInfo(userId);
+  const reportsUsed = await getReportsInCurrentCycle(userId);
+  
+  // Define tier limits
+  const limits = {
+    FREE: 5,
+    STARTER: 25,
+    PROFESSIONAL: 75,
+    AGENCY: 250
+  } as const;
+
+  const reportsLimit = limits[userPlan as keyof typeof limits] || limits.FREE;
+  const reportsRemaining = Math.max(0, reportsLimit - reportsUsed);
+  const utilizationPercentage = Math.round((reportsUsed / reportsLimit) * 100);
+
+  return {
+    reportsUsed,
+    reportsLimit,
+    reportsRemaining,
+    daysRemaining: cycleInfo.daysRemaining,
+    cycleStart: cycleInfo.cycleStart,
+    cycleEnd: cycleInfo.cycleEnd,
+    utilizationPercentage
+  };
+}
+```
+
+**Usage Example:**
+
+```typescript
+const stats = await getUsageStats(user.id, user.plan);
+
+// Display in UI
+<UsageCard
+  used={stats.reportsUsed}
+  limit={stats.reportsLimit}
+  remaining={stats.reportsRemaining}
+  daysLeft={stats.daysRemaining}
+  percentage={stats.utilizationPercentage}
+/>
+```
+
+### `initializeBillingCycle()`
+
+Initializes billing cycle for a new user.
+
+**Location:** `src/lib/billing-cycle.ts:134`
+
+```typescript:src/lib/billing-cycle.ts
+export async function initializeBillingCycle(userId: string): Promise<void> {
+  const now = new Date();
+  const cycleEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      billingCycleStart: now,
+      billingCycleEnd: cycleEnd,
+    }
+  });
+
+  console.log(`Initialized billing cycle for user ${userId}:`, {
+    start: now,
+    end: cycleEnd
+  });
+}
+```
+
+**When Called:**
+- During user registration (after signup)
+- When upgrading from trial
+
+### `getDaysUntilReset()`
+
+Calculates days remaining until billing cycle reset.
+
+**Location:** `src/lib/billing-cycle.ts:121`
+
+```typescript:src/lib/billing-cycle.ts
+export function getDaysUntilReset(billingCycleEnd: Date | null): number {
+  if (!billingCycleEnd) return 0;
+  
+  const now = new Date();
+  const diff = billingCycleEnd.getTime() - now.getTime();
+  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+}
+```
+
+**Returns:** Number of days until reset (0 if already expired)
+
+## Plan Limits
+
+### Tier Configuration
+
+**Location:** `src/lib/billing-cycle.ts:172`
+
+```typescript:src/lib/billing-cycle.ts
+const limits = {
+  FREE: 5,           // 5 reports per 30 days
+  STARTER: 25,       // 25 reports per 30 days
+  PROFESSIONAL: 75,  // 75 reports per 30 days
+  AGENCY: 250        // 250 reports per 30 days
+} as const;
+```
+
+### Plan Comparison
+
+| Plan         | Reports/Cycle | Daily Average | Cost/Report* |
+|--------------|--------------|---------------|-------------|
+| FREE         | 5            | ~0.17         | $0          |
+| STARTER      | 25           | ~0.83         | $1.20       |
+| PROFESSIONAL | 75           | ~2.5          | $0.67       |
+| AGENCY       | 250          | ~8.3          | $0.40       |
+
+*Based on hypothetical pricing
+
+## Integration Points
+
+### Report Generation Checks
+
+**API Route:** `src/app/api/reports/generate/route.ts` (planned)
+
+```typescript
+export async function POST(req: Request) {
+  const session = await getServerSession(authOptions);
+  const user = await prisma.user.findUnique({ where: { id: session.user.id } });
+  
+  // Check usage limits
+  const stats = await getUsageStats(user.id, user.plan);
+  
+  if (stats.reportsRemaining <= 0) {
+    return new Response(
+      JSON.stringify({ 
+        error: 'Report limit reached',
+        resetDate: stats.cycleEnd,
+        daysRemaining: stats.daysRemaining
+      }),
+      { status: 429 }
+    );
+  }
+  
+  // Generate report...
+}
+```
+
+### Dashboard Display
+
+**Component:** `src/components/organisms/UsageCard.tsx` (planned)
+
+```typescript
+import { getUsageStats } from '@/lib/billing-cycle';
+
+export async function UsageCard({ userId, plan }: Props) {
+  const stats = await getUsageStats(userId, plan);
+  
+  return (
+    <div className="usage-card">
+      <h3>Usage This Cycle</h3>
+      
+      <ProgressBar 
+        value={stats.reportsUsed} 
+        max={stats.reportsLimit}
+        percentage={stats.utilizationPercentage}
+      />
+      
+      <div className="stats">
+        <span>{stats.reportsUsed} / {stats.reportsLimit} reports used</span>
+        <span>{stats.reportsRemaining} remaining</span>
+      </div>
+      
+      <div className="cycle-info">
+        <span>Resets in {stats.daysRemaining} days</span>
+        <span className="text-sm text-gray-500">
+          {formatDate(stats.cycleEnd)}
+        </span>
+      </div>
+    </div>
+  );
+}
+```
+
+### Middleware Protection
+
+**Middleware:** `src/middleware.ts` (planned)
+
+```typescript
+export async function middleware(request: NextRequest) {
+  // Check if user is at limit for report generation routes
+  if (request.url.includes('/api/reports/generate')) {
+    const session = await getToken({ req: request });
+    const user = await prisma.user.findUnique({ 
+      where: { id: session.sub } 
+    });
+    
+    const stats = await getUsageStats(user.id, user.plan);
+    
+    if (stats.reportsRemaining <= 0) {
+      return new Response(
+        JSON.stringify({ error: 'Usage limit exceeded' }),
+        { status: 429 }
+      );
+    }
+  }
+  
+  return NextResponse.next();
+}
+```
+
+## Upgrade/Downgrade Handling
+
+### Plan Changes
+
+**When user upgrades or downgrades:**
+
+```typescript
+async function handlePlanChange(userId: string, newPlan: Plan) {
+  // Update user plan
+  await prisma.user.update({
+    where: { id: userId },
+    data: { plan: newPlan }
+  });
+  
+  // DON'T reset billing cycle - let it continue
+  // User keeps current cycle dates but gets new limits
+  
+  console.log(`User ${userId} changed to ${newPlan} plan`);
+  console.log('Billing cycle maintained, new limits apply immediately');
+}
+```
+
+**Philosophy:** Maintain cycle dates, change limits immediately
+
+## Edge Cases
+
+### First User Creation
+
+**Problem:** New users have null billing cycle dates  
+**Solution:** Initialize cycle in signup flow
+
+```typescript
+// In NextAuth callbacks or registration API
+async function onUserCreate(user: User) {
+  await initializeBillingCycle(user.id);
+}
+```
+
+### Clock Skew
+
+**Problem:** Server time vs database time differences  
+**Solution:** Always use database-generated timestamps
+
+```prisma
+model Report {
+  createdAt DateTime @default(now()) @db.Timestamptz
+}
+```
+
+### Timezone Handling
+
+**Problem:** Users in different timezones  
+**Solution:** Store all dates in UTC, display in user's timezone
+
+```typescript
+// Store in UTC
+const cycleEnd = new Date(Date.UTC(...));
+
+// Display in user's timezone
+const displayDate = cycleEnd.toLocaleString('en-US', {
+  timeZone: user.timezone || 'UTC'
+});
+```
+
+### Concurrent Report Generation
+
+**Problem:** Race condition when multiple reports created simultaneously  
+**Solution:** Database-level checks or row locking
+
+```typescript
+// Use transaction with serializable isolation
+await prisma.$transaction(async (tx) => {
+  const count = await tx.report.count({
+    where: { userId, createdAt: { gte: cycleStart, lt: cycleEnd } }
+  });
+  
+  if (count >= limit) {
+    throw new Error('Limit exceeded');
+  }
+  
+  await tx.report.create({ data: reportData });
+}, {
+  isolationLevel: 'Serializable'
+});
+```
+
+## Performance Considerations
+
+### Caching Strategy
+
+**Cache cycle info to reduce database queries:**
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis(...);
+
+async function getCachedCycleInfo(userId: string): Promise<BillingCycleInfo | null> {
+  const cached = await redis.get(`cycle:${userId}`);
+  return cached ? JSON.parse(cached) : null;
+}
+
+async function setCachedCycleInfo(userId: string, info: BillingCycleInfo) {
+  await redis.set(`cycle:${userId}`, JSON.stringify(info), {
+    ex: 3600 // Cache for 1 hour
+  });
+}
+```
+
+### Query Optimization
+
+**Index on createdAt for fast counting:**
+
+```prisma
+model Report {
+  userId    String
+  createdAt DateTime
+  
+  @@index([userId, createdAt])
+}
+```
+
+## Testing
+
+### Unit Tests
+
+```typescript
+import { checkAndResetBillingCycle, getUsageStats } from '@/lib/billing-cycle';
+
+describe('Billing Cycle', () => {
+  it('resets cycle after 30 days', async () => {
+    // Create user with expired cycle
+    const user = await createTestUser({
+      billingCycleEnd: new Date(Date.now() - 86400000) // Yesterday
+    });
+    
+    const wasReset = await checkAndResetBillingCycle(user.id);
+    
+    expect(wasReset).toBe(true);
+  });
+  
+  it('calculates usage correctly', async () => {
+    const user = await createTestUser({ plan: 'STARTER' });
+    await createTestReports(user.id, 10);
+    
+    const stats = await getUsageStats(user.id, user.plan);
+    
+    expect(stats.reportsUsed).toBe(10);
+    expect(stats.reportsLimit).toBe(25);
+    expect(stats.reportsRemaining).toBe(15);
+    expect(stats.utilizationPercentage).toBe(40);
+  });
+});
+```
+
+## Monitoring
+
+### Metrics to Track
+
+1. **Cycle Resets** - Count of automatic resets per day
+2. **Limit Breaches** - Failed report attempts due to limits
+3. **Utilization** - Average % of limit used per plan
+4. **Reset Lag** - Time between cycle expiry and actual reset
+
+### Alert Conditions
+
+```typescript
+// Alert if many users hitting limits
+if (limitBreachRate > 0.15) {
+  alert('15%+ of users hitting report limits');
+}
+
+// Alert if cycle resets failing
+if (resetFailureRate > 0.01) {
+  alert('Billing cycle resets failing');
+}
+```

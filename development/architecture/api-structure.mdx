@@ -1,0 +1,652 @@
+---
+title: API Structure
+description: Complete Next.js API route organization, authentication patterns, and endpoint documentation for Reportr
+---
+
+## Overview
+
+Reportr uses Next.js 14 App Router API routes for a RESTful backend. All API endpoints follow consistent patterns for authentication, validation, error handling, and response formatting.
+
+**Base Path**: `/api`  
+**Location**: `src/app/api/`  
+**Pattern**: File-based routing with route handlers
+
+## Directory Structure
+
+```
+src/app/api/
+├── auth/
+│   ├── [...nextauth]/          # NextAuth.js handler
+│   ├── google/
+│   │   ├── authorize/          # Google OAuth initiation
+│   │   └── callback/           # Google OAuth callback
+│   ├── verify/                 # Email verification
+│   └── resend-verification/    # Resend verification email
+├── clients/
+│   ├── route.ts               # GET all clients, POST create client
+│   └── [id]/
+│       ├── route.ts           # GET/PATCH/DELETE single client
+│       ├── properties/        # Google property management
+│       ├── custom-metrics/    # Custom metric CRUD
+│       ├── disconnect/        # Disconnect Google APIs
+│       ├── google/
+│       │   ├── search-console/  # GSC data
+│       │   └── analytics/       # GA4 data
+│       └── pagespeed/         # PageSpeed Insights
+├── reports/
+│   ├── route.ts               # GET all reports, POST create report
+│   └── [id]/
+│       └── route.ts           # GET/DELETE single report
+├── user/
+│   ├── profile/               # GET/PATCH user profile
+│   ├── billing/               # GET billing info
+│   └── delete/                # DELETE user account
+├── payments/
+│   ├── create-subscription/   # Create PayPal subscription
+│   ├── activate-subscription/ # Activate PayPal subscription
+│   ├── cancel-subscription/   # Cancel subscription
+│   └── webhook/               # PayPal webhook handler
+├── subscription/
+│   ├── upgrade/               # Upgrade plan
+│   └── cancel/                # Cancel subscription
+├── google/
+│   ├── search-console/sites/  # List GSC properties
+│   └── analytics/properties/  # List GA4 properties
+├── cron/
+│   ├── process-email-sequences/  # Email automation
+│   └── process-cancellations/    # Subscription cleanup
+├── usage/                     # API usage statistics
+├── generate-pdf/              # PDF generation endpoint
+├── test-pdf/                  # PDF testing
+├── pdf-health/                # PDF system health check
+└── debug-auth/                # Auth debugging (dev only)
+```
+
+## Route Patterns
+
+### Resource Routes
+
+RESTful resource-based routing:
+
+```typescript
+// GET /api/clients - List all clients
+// POST /api/clients - Create new client
+export async function GET(request: NextRequest) { /* ... */ }
+export async function POST(request: NextRequest) { /* ... */ }
+
+// GET /api/clients/[id] - Get single client
+// PATCH /api/clients/[id] - Update client
+// DELETE /api/clients/[id] - Delete client
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) { /* ... */ }
+```
+
+### Dynamic Routes
+
+Next.js file-based dynamic segments:
+
+```
+[id]/route.ts               → /api/clients/:id
+[...nextauth]/route.ts      → /api/auth/* (catch-all)
+```
+
+## Authentication Pattern
+
+### Protected Routes
+
+All API routes (except auth endpoints) require authentication:
+
+```typescript
+import { requireUser } from '@/lib/auth-helpers'
+
+export async function GET(request: NextRequest) {
+  try {
+    const user = await requireUser()
+    
+    // User is authenticated, proceed
+    const data = await prisma.client.findMany({
+      where: { userId: user.id }
+    })
+    
+    return NextResponse.json(data)
+  } catch (error: any) {
+    if (error.message === 'Unauthorized') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+  }
+}
+```
+
+### Auth Helper
+
+**File**: `src/lib/auth-helpers.ts`
+
+```typescript
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+
+export async function requireUser() {
+  const session = await getServerSession(authOptions)
+  
+  if (!session?.user?.email) {
+    throw new Error('Unauthorized')
+  }
+  
+  const user = await prisma.user.findUnique({
+    where: { email: session.user.email }
+  })
+  
+  if (!user) {
+    throw new Error('Unauthorized')
+  }
+  
+  return user
+}
+```
+
+## Validation Pattern
+
+### Zod Schema Validation
+
+All POST/PATCH requests validate input with Zod:
+
+```typescript
+import { z } from 'zod'
+
+const clientSchema = z.object({
+  name: z.string().min(2, 'Name must be at least 2 characters'),
+  domain: z.string().url('Must be a valid URL'),
+  contactName: z.string().optional(),
+  contactEmail: z.string().email('Must be a valid email').optional(),
+})
+
+export async function POST(request: NextRequest) {
+  try {
+    const user = await requireUser()
+    const body = await request.json()
+    
+    // Validate input
+    const validated = clientSchema.parse(body)
+    
+    // Create resource
+    const client = await prisma.client.create({
+      data: {
+        ...validated,
+        userId: user.id
+      }
+    })
+    
+    return NextResponse.json(client, { status: 201 })
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: 'Validation error', details: error.errors },
+        { status: 400 }
+      )
+    }
+    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+  }
+}
+```
+
+### Common Validation Schemas
+
+**File**: `src/lib/validations.ts`
+
+```typescript
+import { z } from 'zod'
+
+export const createReportSchema = z.object({
+  clientId: z.string().min(1, 'Client ID is required'),
+  title: z.string().min(1, 'Title is required'),
+  data: z.object({
+    clientName: z.string(),
+    startDate: z.string(),
+    endDate: z.string(),
+    agencyName: z.string().optional(),
+    agencyLogo: z.string().optional(),
+    gscData: z.object({
+      clicks: z.number(),
+      impressions: z.number(),
+      ctr: z.number(),
+      position: z.number(),
+    }),
+    ga4Data: z.object({
+      users: z.number(),
+      sessions: z.number(),
+      bounceRate: z.number(),
+      conversions: z.number()
+    })
+  })
+})
+
+export const updateUserSchema = z.object({
+  companyName: z.string().optional(),
+  website: z.string().url().optional(),
+  supportEmail: z.string().email().optional(),
+  primaryColor: z.string().regex(/^#[0-9A-F]{6}$/i).optional(),
+  logo: z.string().optional(),
+  whiteLabelEnabled: z.boolean().optional(),
+})
+```
+
+## Error Handling
+
+### Standard Error Response
+
+```typescript
+interface ErrorResponse {
+  error: string
+  details?: any
+  code?: string
+}
+```
+
+### Error Codes
+
+```typescript
+// 400 - Bad Request (validation error)
+return NextResponse.json(
+  { error: 'Invalid input', details: zodError.errors },
+  { status: 400 }
+)
+
+// 401 - Unauthorized (not authenticated)
+return NextResponse.json(
+  { error: 'Unauthorized' },
+  { status: 401 }
+)
+
+// 403 - Forbidden (authenticated but no access)
+return NextResponse.json(
+  { error: 'Email verification required', requiresVerification: true },
+  { status: 403 }
+)
+
+// 404 - Not Found
+return NextResponse.json(
+  { error: 'Client not found' },
+  { status: 404 }
+)
+
+// 500 - Internal Server Error
+return NextResponse.json(
+  { error: 'Failed to create report' },
+  { status: 500 }
+)
+```
+
+## Key API Endpoints
+
+### Clients API
+
+#### GET /api/clients
+
+List all clients for authenticated user.
+
+**Response**:
+```json
+[
+  {
+    "id": "cl123",
+    "name": "Acme Corp",
+    "domain": "https://acme.com",
+    "googleSearchConsoleConnected": true,
+    "googleAnalyticsConnected": true,
+    "lastReportGenerated": "2026-03-01T10:00:00Z",
+    "totalReportsGenerated": 5,
+    "createdAt": "2026-01-15T10:00:00Z",
+    "reports": [{ /* latest report */ }]
+  }
+]
+```
+
+#### POST /api/clients
+
+Create new client.
+
+**Request**:
+```json
+{
+  "name": "Acme Corp",
+  "domain": "https://acme.com",
+  "contactEmail": "contact@acme.com",
+  "contactName": "John Doe"
+}
+```
+
+**Features**:
+- Email verification check
+- Plan limit validation
+- Trial expiry check
+
+#### PATCH /api/clients/[id]
+
+Update client details.
+
+**Request**:
+```json
+{
+  "name": "Updated Name",
+  "contactEmail": "new@email.com"
+}
+```
+
+#### DELETE /api/clients/[id]
+
+Delete client and cascade delete all reports.
+
+### Reports API
+
+#### GET /api/reports
+
+List all reports for user, optionally filtered by client.
+
+**Query Parameters**:
+- `clientId` (optional) - Filter by client ID
+
+**Response**:
+```json
+[
+  {
+    "id": "rep123",
+    "title": "January SEO Report",
+    "status": "COMPLETED",
+    "pdfUrl": "https://blob.vercel-storage.com/...",
+    "createdAt": "2026-02-01T10:00:00Z",
+    "client": {
+      "id": "cl123",
+      "name": "Acme Corp",
+      "domain": "https://acme.com"
+    },
+    "aiInsights": [
+      {
+        "type": "trend",
+        "title": "Traffic Growth",
+        "description": "Organic traffic increased 23% month-over-month"
+      }
+    ],
+    "aiTokensUsed": 1250,
+    "aiCostUsd": 0.025
+  }
+]
+```
+
+#### POST /api/reports
+
+Generate new report.
+
+**Request**:
+```json
+{
+  "clientId": "cl123",
+  "title": "January SEO Report",
+  "data": {
+    "clientName": "Acme Corp",
+    "startDate": "2026-01-01",
+    "endDate": "2026-01-31",
+    "gscData": {
+      "clicks": 15420,
+      "impressions": 234100,
+      "ctr": 0.0659,
+      "position": 12.3,
+      "topQueries": []
+    },
+    "ga4Data": {
+      "users": 8234,
+      "sessions": 12450,
+      "bounceRate": 0.42,
+      "conversions": 234
+    }
+  }
+}
+```
+
+**Features**:
+- Email verification required
+- Plan limit enforcement
+- Upgrade prompts when nearing limit
+- Client ownership validation
+
+**Response** (with upgrade warning):
+```json
+{
+  "id": "rep123",
+  "title": "January SEO Report",
+  "status": "COMPLETED",
+  "warning": {
+    "message": "You've used 4 of your 5 free reports this billing cycle",
+    "reportsRemaining": 1,
+    "upgradePrompt": true,
+    "currentPlan": "FREE",
+    "upgradeOptions": { /* ... */ }
+  }
+}
+```
+
+### User API
+
+#### GET /api/user/profile
+
+Get authenticated user profile.
+
+**Response**:
+```json
+{
+  "id": "usr123",
+  "email": "agency@example.com",
+  "name": "John Doe",
+  "emailVerified": "2026-01-15T10:00:00Z",
+  "companyName": "John's SEO Agency",
+  "primaryColor": "#3B82F6",
+  "logo": "https://blob.vercel-storage.com/logo.png",
+  "whiteLabelEnabled": true,
+  "plan": "STARTER",
+  "subscriptionStatus": "active",
+  "billingCycleEnd": "2026-04-01T00:00:00Z"
+}
+```
+
+#### PATCH /api/user/profile
+
+Update user profile and branding.
+
+**Request**:
+```json
+{
+  "companyName": "Updated Agency Name",
+  "primaryColor": "#10B981",
+  "whiteLabelEnabled": true,
+  "website": "https://myagency.com",
+  "supportEmail": "support@myagency.com"
+}
+```
+
+### Payments API
+
+#### POST /api/payments/create-subscription
+
+Create PayPal subscription.
+
+**Request**:
+```json
+{
+  "plan": "STARTER"
+}
+```
+
+**Response**:
+```json
+{
+  "subscriptionId": "I-123ABC",
+  "approveUrl": "https://www.paypal.com/webapps/billing/subscriptions?ba_token=..."
+}
+```
+
+#### POST /api/payments/webhook
+
+Handle PayPal webhook events.
+
+**Events**:
+- `BILLING.SUBSCRIPTION.ACTIVATED`
+- `BILLING.SUBSCRIPTION.CANCELLED`
+- `BILLING.SUBSCRIPTION.SUSPENDED`
+- `PAYMENT.SALE.COMPLETED`
+
+### Google API Integration
+
+#### GET /api/google/search-console/sites
+
+List user's GSC properties.
+
+**Response**:
+```json
+[
+  {
+    "siteUrl": "https://acme.com/",
+    "permissionLevel": "siteOwner"
+  }
+]
+```
+
+#### GET /api/clients/[id]/google/search-console
+
+Fetch GSC data for client.
+
+**Query Parameters**:
+- `startDate` - ISO date string
+- `endDate` - ISO date string
+
+**Response**:
+```json
+{
+  "clicks": 15420,
+  "impressions": 234100,
+  "ctr": 0.0659,
+  "position": 12.3,
+  "topQueries": [
+    {
+      "query": "seo services",
+      "clicks": 234,
+      "impressions": 5600,
+      "ctr": 0.0418,
+      "position": 8.2
+    }
+  ]
+}
+```
+
+## Rate Limiting & Usage Tracking
+
+### API Usage Tracking
+
+All API calls logged to `ApiUsage` model:
+
+```typescript
+await prisma.apiUsage.create({
+  data: {
+    userId: user.id,
+    endpoint: '/api/reports',
+    method: 'POST',
+    statusCode: 201,
+    responseTime: endTime - startTime,
+    cost: aiCost // For AI API calls
+  }
+})
+```
+
+### Plan Limits
+
+**File**: `src/lib/plan-limits.ts`
+
+```typescript
+export const PLAN_LIMITS = {
+  FREE: { reports: 5, clients: 2 },
+  STARTER: { reports: 25, clients: 5 },
+  PROFESSIONAL: { reports: 100, clients: 20 },
+  AGENCY: { reports: -1, clients: -1 } // Unlimited
+}
+
+export async function canGenerateReport(userId: string) {
+  const user = await prisma.user.findUnique({ where: { id: userId } })
+  const limit = PLAN_LIMITS[user.plan].reports
+  
+  if (limit === -1) return { allowed: true }
+  
+  const count = await getReportsInCurrentCycle(userId)
+  
+  return {
+    allowed: count < limit,
+    currentCount: count,
+    limit: limit,
+    reason: count >= limit ? 'Report limit reached for billing cycle' : null
+  }
+}
+```
+
+## Cron Jobs
+
+### Email Sequences
+
+**Endpoint**: `/api/cron/process-email-sequences`
+
+Processes automated email campaigns:
+- Welcome email on signup
+- Day 1 onboarding
+- Day 3 trial reminder
+- Trial expiry warning
+
+**Trigger**: Vercel Cron (daily at 9 AM UTC)
+
+### Subscription Cleanup
+
+**Endpoint**: `/api/cron/process-cancellations`
+
+Downgrades users when subscription ends:
+- Check `subscriptionEndDate`
+- Downgrade to FREE plan
+- Update `subscriptionStatus`
+
+**Trigger**: Vercel Cron (daily at midnight UTC)
+
+## Best Practices
+
+1. **Always authenticate** - Use `requireUser()` for protected routes
+2. **Validate ownership** - Check `userId` matches resource owner
+3. **Use Zod schemas** - Validate all request bodies
+4. **Handle errors gracefully** - Return appropriate HTTP status codes
+5. **Log important events** - Use `console.log` for debugging
+6. **Track API usage** - Insert into `ApiUsage` for billing
+7. **Force dynamic** - Add `export const dynamic = 'force-dynamic'` for routes using auth
+8. **Return proper types** - Use `NextResponse.json()` with TypeScript
+
+## Testing API Endpoints
+
+### Using curl
+
+```bash
+# Get session cookie first
+curl -c cookies.txt http://localhost:3000/api/auth/session
+
+# Then use cookie for authenticated requests
+curl -b cookies.txt http://localhost:3000/api/clients
+```
+
+### Using Thunder Client / Postman
+
+1. Sign in via browser
+2. Copy `next-auth.session-token` cookie
+3. Add to request headers:
+   ```
+   Cookie: next-auth.session-token=<token>
+   ```
+
+## Related Documentation
+
+- [Architecture Overview](/development/architecture/overview)
+- [Database Schema](/development/architecture/database-schema)
+- [Atomic Design System](/development/architecture/atomic-design)

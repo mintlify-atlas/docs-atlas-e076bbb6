@@ -1,0 +1,632 @@
+---
+title: 'White-Label Branding'
+description: 'Customize reports and platform with your agency logo, colors, and company information'
+icon: 'palette'
+---
+
+## Overview
+
+White-label branding allows you to replace Reportr's branding with your own agency identity. Your custom logo, company name, brand colors, and contact information appear throughout the platform and in all generated PDF reports.
+
+<Info>
+  **Available on**: Professional and Agency plans, or as a $20/month add-on to Starter plans
+</Info>
+
+## Accessing Branding Settings
+
+Navigate to **Settings** → **Branding** from your dashboard sidebar. You'll see the branding configuration interface with a live preview panel.
+
+## Configuration Options
+
+### White-Label Toggle
+
+The master switch that enables or disables white-label branding:
+
+<Steps>
+  <Step title="Enable White-Label">
+    Toggle the **Enable White Label Branding** switch to ON. This activates all customization fields.
+  </Step>
+  
+  <Step title="Configure Your Branding">
+    Fill out company information, upload your logo, and select brand colors.
+  </Step>
+  
+  <Step title="Save Settings">
+    Click **Save Settings** to apply your branding across the platform.
+  </Step>
+</Steps>
+
+<Warning>
+  If you disable white-label branding after configuring it, all reports will revert to default Reportr branding. Your custom settings are preserved but not displayed.
+</Warning>
+
+### Company Information
+
+Your agency details that appear in reports and the platform:
+
+<ParamField path="companyName" type="string" required>
+  **Agency Name** (max 50 characters)
+  
+  Appears on:
+  - PDF report cover pages
+  - Dashboard header
+  - Report footers
+  - Platform UI
+  
+  Example: `"Acme Digital Marketing"`
+</ParamField>
+
+<ParamField path="website" type="string">
+  **Website URL** (max 100 characters)
+  
+  Appears on:
+  - Report cover pages
+  - Report footers
+  
+  Format: Include `https://` (e.g., `"https://acmedigital.com"`)
+  
+  The protocol is stripped in display: `acmedigital.com`
+</ParamField>
+
+<ParamField path="supportEmail" type="string">
+  **Support Email** (max 100 characters)
+  
+  Appears on:
+  - Report footers
+  - Client-facing documentation
+  
+  Must be a valid email format: `support@acmedigital.com`
+</ParamField>
+
+### Company Logo
+
+Upload your agency logo to replace Reportr branding:
+
+<CardGroup cols={2}>
+  <Card title="Supported Formats" icon="file-image">
+    - PNG (recommended)
+    - JPG / JPEG
+    - GIF
+    - WebP
+  </Card>
+  
+  <Card title="Size Requirements" icon="ruler">
+    - Maximum file size: 2MB
+    - Recommended: 400x400px square
+    - Displayed at: 40x40px (UI), 120x60px (PDF)
+  </Card>
+</CardGroup>
+
+#### Logo Upload Process
+
+<Steps>
+  <Step title="Click Upload Area">
+    Click the dashed upload box or drag and drop your logo file.
+  </Step>
+  
+  <Step title="File Validation">
+    System validates:
+    - File type (image formats only)
+    - File size (must be under 2MB)
+    
+    You'll see an error if validation fails.
+  </Step>
+  
+  <Step title="Preview">
+    A thumbnail preview appears showing how your logo will look.
+  </Step>
+  
+  <Step title="Remove/Replace">
+    Hover over the preview and click **Remove** to delete, or upload a new file to replace.
+  </Step>
+</Steps>
+
+#### Logo Implementation
+
+Logos are base64-encoded and stored in the database:
+
+```typescript Logo Upload (from source)
+const handleFileUpload = async (event) => {
+  const file = event.target.files?.[0];
+  
+  // Validate file type
+  const validTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+  if (!validTypes.includes(file.type)) {
+    toast.error('Please upload a valid image file');
+    return;
+  }
+  
+  // Validate file size (2MB max)
+  if (file.size > 2 * 1024 * 1024) {
+    toast.error('File size must be under 2MB');
+    return;
+  }
+  
+  // Convert to base64
+  const reader = new FileReader();
+  reader.onloadend = () => {
+    const base64String = reader.result;
+    // Save to state and database
+  };
+  reader.readAsDataURL(file);
+};
+```
+
+<Tip>
+  **Pro Tip**: Use a square logo with transparent background for best results across different contexts (PDF headers, dashboard sidebar, etc.)
+</Tip>
+
+### Brand Colors
+
+Customize the primary color used throughout the platform:
+
+<Tabs>
+  <Tab title="Preset Colors">
+    Choose from 8 predefined colors optimized for readability:
+    
+    - Purple: `#8B5CF6` (default)
+    - Blue: `#3B82F6`
+    - Green: `#10B981`
+    - Orange: `#F59E0B`
+    - Red: `#EF4444`
+    - Indigo: `#6366F1`
+    - Pink: `#EC4899`
+    - Teal: `#14B8A6`
+    
+    Click any color swatch to select it.
+  </Tab>
+  
+  <Tab title="Custom Color">
+    Use the color picker to select any hex color:
+    
+    1. Click the **Custom** color input
+    2. Use the system color picker
+    3. Or enter a hex value directly (e.g., `#FF5733`)
+    
+    The live preview updates immediately.
+  </Tab>
+</Tabs>
+
+#### Where Colors Appear
+
+<AccordionGroup>
+  <Accordion title="Platform UI" icon="desktop">
+    - Sidebar active states
+    - Primary buttons
+    - Links and accents
+    - Progress indicators
+    - Chart colors
+  </Accordion>
+  
+  <Accordion title="PDF Reports" icon="file-pdf">
+    - Cover page title
+    - Section headers
+    - Chart accent colors
+    - Company name text
+    - Divider lines
+  </Accordion>
+</AccordionGroup>
+
+#### Color Theming Implementation
+
+Colors are applied using CSS custom properties:
+
+```css Dynamic Color Application
+:root {
+  --primary-color: #8B5CF6; /* Updated dynamically */
+}
+
+.btn-primary-themed {
+  background-color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.text-primary-themed {
+  color: var(--primary-color);
+}
+```
+
+In PDF components:
+
+```typescript Branded PDF Styles (from source)
+const createBrandedStyles = (primaryColor: string) => ({
+  brandPrimary: {
+    color: primaryColor
+  },
+  brandBackground: {
+    backgroundColor: primaryColor
+  },
+  brandBorder: {
+    borderColor: primaryColor
+  }
+});
+
+const brandedStyles = createBrandedStyles(data.branding.primaryColor);
+```
+
+## Live Preview
+
+The branding settings page includes a real-time preview panel showing:
+
+<CardGroup cols={2}>
+  <Card title="Report Cover" icon="file">
+    Preview of how your PDF cover page will look with:
+    - Your logo
+    - Company name
+    - Brand colors
+    - Website URL
+  </Card>
+  
+  <Card title="Platform Elements" icon="browser">
+    Simulated UI components styled with:
+    - Primary color buttons
+    - Branded navigation
+    - Accent elements
+  </Card>
+</CardGroup>
+
+### Preview States
+
+<Tabs>
+  <Tab title="White-Label Enabled">
+    Shows full branding preview with all your customizations applied in real-time as you make changes.
+  </Tab>
+  
+  <Tab title="White-Label Disabled">
+    Shows a placeholder message:
+    
+    > White Label Disabled
+    > 
+    > Enable white label branding to see the live preview of your customizations
+  </Tab>
+</Tabs>
+
+## Validation & Limits
+
+The system validates your branding inputs:
+
+<ResponseField name="companyName" type="validation">
+  - **Required** when white-label is enabled
+  - Minimum 2 characters
+  - Maximum 50 characters
+  - Character count indicator turns yellow at 80% (40 chars)
+  - Turns red when exceeding limit
+</ResponseField>
+
+<ResponseField name="website" type="validation">
+  - Optional field
+  - Must be valid URL format if provided
+  - Maximum 100 characters
+  - Automatically validates URL structure
+</ResponseField>
+
+<ResponseField name="supportEmail" type="validation">
+  - Optional field
+  - Must be valid email format if provided
+  - Maximum 100 characters
+  - Validates against email regex: `/^[^\s@]+@[^\s@]+\.[^\s@]+$/`
+</ResponseField>
+
+<ResponseField name="primaryColor" type="validation">
+  - Must be valid hex color
+  - 6-character hex format: `#RRGGBB`
+  - Color picker enforces valid format
+</ResponseField>
+
+<ResponseField name="logo" type="validation">
+  - Optional field
+  - File size: Max 2MB
+  - Formats: PNG, JPG, GIF, WebP
+  - Stored as base64 data URI
+</ResponseField>
+
+### Validation Implementation
+
+```typescript Branding Validation (from source)
+export const validateBrandingData = (data: BrandingData) => {
+  const errors: ValidationError[] = [];
+  
+  if (!data.companyName || data.companyName.trim().length < 2) {
+    errors.push({
+      field: 'companyName',
+      message: 'Agency name must be at least 2 characters'
+    });
+  }
+  
+  if (data.companyName.length > 50) {
+    errors.push({
+      field: 'companyName',
+      message: 'Agency name cannot exceed 50 characters'
+    });
+  }
+  
+  if (data.website && !isValidUrl(data.website)) {
+    errors.push({
+      field: 'website',
+      message: 'Please enter a valid URL'
+    });
+  }
+  
+  if (data.supportEmail && !isValidEmail(data.supportEmail)) {
+    errors.push({
+      field: 'supportEmail',
+      message: 'Please enter a valid email address'
+    });
+  }
+  
+  return errors;
+};
+```
+
+## Database Schema
+
+Branding settings are stored in the User model:
+
+```prisma User Branding Fields
+model User {
+  id                String   @id @default(cuid())
+  email             String   @unique
+  
+  // White-label branding fields
+  whiteLabelEnabled Boolean  @default(false)
+  companyName       String?
+  website           String?
+  supportEmail      String?
+  primaryColor      String   @default("#8B5CF6")
+  logo              String?  // Base64 data URI
+  
+  plan              Plan     @default(FREE)
+  // ... other fields
+}
+```
+
+## Access Control
+
+White-label features are gated by plan:
+
+```typescript Plan Check (from source)
+export const canUseWhiteLabel = (user: User): boolean => {
+  // Professional and Agency plans always have access
+  if (user.plan === 'PROFESSIONAL' || user.plan === 'AGENCY') {
+    return true;
+  }
+  
+  // Starter users can purchase white-label add-on
+  if (user.plan === 'STARTER' && user.whiteLabelAddon) {
+    return true;
+  }
+  
+  // Users in trial period have temporary access
+  if (user.trialEndDate && new Date(user.trialEndDate) > new Date()) {
+    return true;
+  }
+  
+  return false;
+};
+```
+
+### Upgrade Prompt
+
+Users without access see:
+
+<Warning>
+  **White Label Branding Unavailable**
+  
+  White label branding is available on Professional and Agency plans. You can also access it during your trial period.
+  
+  [Upgrade to Professional] or [Add White-Label (+$20/mo)]
+</Warning>
+
+## PDF Report Branding
+
+When white-label is enabled, PDF reports are fully customized:
+
+### Cover Page
+
+```typescript Cover Page Branding (from CoverPage.tsx)
+// Logo selection logic
+const getLogoUrl = () => {
+  const defaultReportrLogo = 'data:image/svg+xml;base64,...';
+  
+  if (data.branding.whiteLabelEnabled || data.branding.enabled) {
+    return data.branding.logo || defaultReportrLogo;
+  }
+  
+  return defaultReportrLogo;
+};
+
+// Render with branding
+<Page size="A4">
+  <Image src={getLogoUrl()} style={styles.logo} />
+  
+  <Text style={[styles.title, brandedStyles.brandPrimary]}>
+    SEO Report
+  </Text>
+  
+  <Text style={styles.clientName}>
+    {data.clientName}
+  </Text>
+  
+  {data.branding.whiteLabelEnabled && data.branding.companyName && (
+    <Text style={[styles.agencyName, brandedStyles.brandPrimary]}>
+      {data.branding.companyName}
+    </Text>
+  )}
+  
+  {data.branding.website && (
+    <Text style={styles.agencyWebsite}>
+      {data.branding.website.replace(/^https?:\/\//, '')}
+    </Text>
+  )}
+</Page>
+```
+
+### Report Sections
+
+All section headers use brand color:
+
+```typescript Section Headers
+<Text style={[styles.sectionHeader, brandedStyles.brandPrimary]}>
+  Search Console Performance
+</Text>
+
+<View style={[styles.divider, brandedStyles.brandBorder]} />
+```
+
+### Footer
+
+```typescript Report Footer
+<View style={styles.footer}>
+  {data.branding.whiteLabelEnabled ? (
+    <Text style={styles.footerText}>
+      Report by {data.branding.companyName} | {data.branding.website}
+    </Text>
+  ) : (
+    <Text style={styles.footerText}>
+      Powered by Reportr
+    </Text>
+  )}
+</View>
+```
+
+## Platform Branding
+
+Your branding also appears in the web platform:
+
+<AccordionGroup>
+  <Accordion title="Dashboard Header" icon="header">
+    - Company logo in sidebar
+    - Company name in header
+    - Brand color for active nav items
+  </Accordion>
+  
+  <Accordion title="Buttons & CTAs" icon="hand-pointer">
+    - Primary buttons use brand color
+    - Hover states match brand
+    - Focus states use lighter tint
+  </Accordion>
+  
+  <Accordion title="Data Visualizations" icon="chart-line">
+    - Chart accent colors
+    - Progress bars
+    - Status indicators
+  </Accordion>
+  
+  <Accordion title="Client-Facing Pages" icon="user">
+    - Login/signup screens (future)
+    - Client portals (future)
+    - Shared report links (future)
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Logo Design" icon="paintbrush">
+    - Use square format (1:1 ratio)
+    - Transparent background
+    - High resolution (400x400px minimum)
+    - Simple, recognizable design
+  </Card>
+  
+  <Card title="Color Selection" icon="eye-dropper">
+    - Choose high-contrast colors
+    - Test readability on white backgrounds
+    - Ensure accessibility (WCAG AA)
+    - Match your existing brand
+  </Card>
+  
+  <Card title="Company Info" icon="building">
+    - Use formal company name
+    - Include www subdomain in website
+    - Use dedicated support email
+    - Keep info current
+  </Card>
+  
+  <Card title="Testing" icon="vial">
+    - Generate test report after setup
+    - Review all pages in PDF
+    - Check color rendering
+    - Verify logo clarity
+  </Card>
+</CardGroup>
+
+## Common Issues
+
+<AccordionGroup>
+  <Accordion title="Logo appears blurry in PDF" icon="image">
+    **Cause**: Low-resolution source image
+    
+    **Solution**: Upload a higher resolution logo (at least 400x400px). PDFs render at 300 DPI, so small images appear pixelated.
+  </Accordion>
+  
+  <Accordion title="Brand color looks different in PDF vs web" icon="palette">
+    **Cause**: Different color rendering between screen (RGB) and PDF (may be converted to CMYK)
+    
+    **Solution**: This is normal. Test your color choice and adjust if needed. Bright colors may appear slightly different.
+  </Accordion>
+  
+  <Accordion title="Logo not showing in reports" icon="eye-slash">
+    **Cause**: File size too large or invalid format
+    
+    **Solution**: 
+    1. Check file is under 2MB
+    2. Use PNG or JPG format
+    3. Re-upload and save settings
+    4. Generate new report to test
+  </Accordion>
+  
+  <Accordion title="Changes not appearing immediately" icon="clock">
+    **Cause**: Browser cache or unsaved settings
+    
+    **Solution**: 
+    1. Click "Save Settings" after making changes
+    2. Hard refresh browser (Ctrl+Shift+R)
+    3. Generate new report to see updated branding
+  </Accordion>
+</AccordionGroup>
+
+## Pricing
+
+<CardGroup cols={3}>
+  <Card title="Professional" icon="crown">
+    **$49/month**
+    
+    White-label included
+    + 25 clients
+    + 100 reports/month
+  </Card>
+  
+  <Card title="Agency" icon="building">
+    **$99/month**
+    
+    White-label included
+    + Unlimited clients
+    + Unlimited reports
+  </Card>
+  
+  <Card title="Starter Add-On" icon="plus">
+    **+$20/month**
+    
+    Add white-label to Starter plan
+    
+    Base: $19/month
+    Total: $39/month
+  </Card>
+</CardGroup>
+
+## Related Resources
+
+<CardGroup cols={3}>
+  <Card title="Report Generation" icon="file-pdf" href="/features/report-generation">
+    See how branding appears in reports
+  </Card>
+  
+  <Card title="Customize Branding" icon="ruler-combined" href="/guides/customizing-branding">
+    Step-by-step branding setup guide
+  </Card>
+  
+  <Card title="Upgrade Plan" icon="arrow-up" href="/pricing">
+    Compare plans and add white-label
+  </Card>
+</CardGroup>

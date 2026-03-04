@@ -1,0 +1,623 @@
+---
+title: AI Insights System
+description: Complete reference for Claude AI integration, prompt engineering, and automated insight generation
+---
+
+# AI Insights System
+
+The AI Insights system uses Anthropic's Claude API to generate strategic SEO recommendations based on report data. It provides intelligent, data-driven insights with fallback logic for reliability.
+
+## Architecture Overview
+
+### Core Component
+
+**Class:** `AIInsightsGenerator`  
+**Location:** `src/lib/ai/insights-generator.ts:15`
+
+```typescript:src/lib/ai/insights-generator.ts
+export class AIInsightsGenerator {
+  async generateInsights(data: Partial<ReportData>): Promise<AIInsight[]>
+}
+```
+
+### Data Flow
+
+```
+1. Report Data → Format for Claude API
+2. Build Structured Prompt → Include data context
+3. Call Claude API → Get JSON response
+4. Parse Response → Extract insights array
+5. Return AIInsight[] → 5 strategic recommendations
+   ↓ (on error)
+6. Fallback Logic → Generate rule-based insights
+```
+
+## Claude API Integration
+
+### Initialization
+
+**Location:** `src/lib/ai/insights-generator.ts:11`
+
+```typescript:src/lib/ai/insights-generator.ts
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+});
+```
+
+**Environment Variable:** `ANTHROPIC_API_KEY`
+
+### Model Configuration
+
+**Current Model:** `claude-sonnet-4-20250514`
+
+**Location:** `src/lib/ai/insights-generator.ts:40`
+
+```typescript:src/lib/ai/insights-generator.ts
+const requestPayload = {
+  model: 'claude-sonnet-4-20250514',
+  max_tokens: 2000,
+  messages: [{
+    role: 'user' as const,
+    content: prompt
+  }]
+};
+```
+
+**Token Budget:**
+- Input: ~1500 tokens (report data + prompt)
+- Output: ~500 tokens (5 insights in JSON)
+- Total: ~2000 tokens per request
+
+**Cost Estimate:** ~$0.006 per report (at $0.003 per 1K tokens)
+
+## Prompt Engineering
+
+### Prompt Structure
+
+**Location:** `src/lib/ai/insights-generator.ts:87`
+
+#### Prompt Components
+
+1. **Instruction Header** - Defines output requirements
+2. **Quality Criteria** - Ensures actionable, specific insights
+3. **Output Schema** - JSON structure specification
+4. **Example Insight** - Shows ideal format
+5. **Data Context** - Client's actual metrics
+6. **Format Enforcement** - Requests valid JSON
+
+### Full Prompt Template
+
+```typescript:src/lib/ai/insights-generator.ts
+return `
+Generate exactly 5 strategic recommendations based on this SEO data.
+
+Each recommendation MUST be:
+1. SPECIFIC to this client's actual data (reference specific keywords, pages, or metrics)
+2. ACTIONABLE with clear next steps  
+3. PRIORITIZED based on potential impact
+
+For each recommendation provide:
+- title: Action-oriented headline (5-8 words)
+- description: 2-3 sentences explaining the opportunity and approach. Reference specific data points.
+- priority: "high", "medium", or "low" based on potential ROI
+- category: "keyword", "technical", "content", or "performance"  
+- expectedImpact: Quantified expected outcome (e.g., "Potential 20% increase in organic traffic")
+- actionItems: Array of 2-3 specific action steps
+
+Example of GOOD recommendation:
+{
+  "title": "Target Page 2 Keywords for Quick Wins",
+  "description": "You have 12 keywords ranking positions 11-20 that are close to page 1. Keywords like 'digital marketing services' at position 14 with 450 monthly impressions represent immediate opportunities. Optimizing these pages could move them to page 1 within 30-60 days.",
+  "priority": "high", 
+  "category": "keyword",
+  "expectedImpact": "Moving 5 keywords to page 1 could generate 200+ additional monthly clicks",
+  "actionItems": ["Identify top 5 keywords in positions 11-15", "Add target keyword to H1 and first paragraph", "Build 2-3 internal links to each target page"]
+}
+
+DATA TO ANALYZE:
+- Domain: ${domain}
+- Total Clicks: ${clicks} (${clicksChange}% change)
+- Total Impressions: ${impressions}  
+- Average Position: ${position}
+- Organic Sessions: ${organicSessions} (${sessionsChange}% change)
+- Mobile Score: ${mobileScore}/100
+- Desktop Score: ${desktopScore}/100
+- Top Keywords: ${topKeywords.slice(0, 10).join(', ') || 'No data'}
+- Top Pages: ${topPages.slice(0, 5).join(', ') || 'No data'}
+
+Return ONLY valid JSON array with exactly 5 recommendations in this format:
+{
+  "insights": [
+    {
+      "title": "Action-oriented title",
+      "description": "Detailed explanation referencing specific data",
+      "priority": "high|medium|low",
+      "category": "keyword|technical|content|performance",
+      "expectedImpact": "Quantified expected result",
+      "actionItems": ["Step 1", "Step 2", "Step 3"],
+      "dataSource": ["Google Search Console", "PageSpeed Insights", "etc."]
+    }
+  ]
+}
+
+Make insights specific, actionable, and data-driven. Reference actual metrics from the data provided.`;
+```
+
+### Prompt Best Practices
+
+1. **Specificity Enforcement** - Requires referencing actual data
+2. **Format Constraints** - Demands JSON output for reliable parsing
+3. **Quality Examples** - Shows ideal insight structure
+4. **Context Loading** - Includes all relevant metrics
+5. **Action Orientation** - Forces actionable recommendations
+
+## Response Processing
+
+### Parsing Claude's Response
+
+**Location:** `src/lib/ai/insights-generator.ts:156`
+
+```typescript:src/lib/ai/insights-generator.ts
+private parseInsights(aiResponse: string): AIInsight[] {
+  try {
+    // Strip markdown formatting if present
+    const cleanResponse = aiResponse
+      .replace(/```json\s*/, '')
+      .replace(/```\s*$/, '')
+      .trim();
+
+    const parsed = JSON.parse(cleanResponse);
+    
+    return parsed.insights.map((insight: any, index: number) => ({
+      id: `ai-insight-${Date.now()}-${index}`,
+      title: insight.title,
+      description: insight.description,
+      priority: insight.priority,
+      category: insight.category,
+      expectedImpact: insight.expectedImpact,
+      actionItems: insight.actionItems,
+      dataSource: insight.dataSource
+    }));
+  } catch (error) {
+    console.error('Failed to parse AI insights:', error);
+    return this.getFallbackInsights();
+  }
+}
+```
+
+### Response Validation
+
+**Checks:**
+1. Valid JSON format
+2. Contains `insights` array
+3. Each insight has required fields
+4. Priority values are valid (`high|medium|low`)
+5. Category values are valid (`keyword|technical|content|performance`)
+
+**On Failure:** Falls back to rule-based insights
+
+## Fallback System
+
+### Rule-Based Insights
+
+**Location:** `src/lib/ai/insights-generator.ts:182`
+
+Provides reliable insights when AI fails or API is unavailable.
+
+### Fallback Logic
+
+```typescript:src/lib/ai/insights-generator.ts
+private getFallbackInsights(data?: Partial<ReportData>): AIInsight[] {
+  const insights: AIInsight[] = [];
+  const timestamp = Date.now();
+
+  // 1. Mobile Performance Check
+  const mobileScore = data?.summary?.mobileScore || 50;
+  if (mobileScore < 75) {
+    insights.push({
+      id: `fallback-mobile-${timestamp}-1`,
+      title: 'Improve Mobile Page Speed',
+      description: `Your mobile page speed score is ${mobileScore}/100...`,
+      priority: mobileScore < 50 ? 'high' : 'medium',
+      category: 'technical',
+      expectedImpact: `Improving to 85+ could increase mobile traffic by 15-25%`,
+      actionItems: [
+        'Compress and optimize all images to WebP format',
+        'Minimize JavaScript and CSS file sizes',
+        'Implement lazy loading for non-critical content'
+      ],
+      dataSource: ['PageSpeed Insights']
+    });
+  }
+
+  // 2. Keyword Position Optimization
+  const avgPosition = data?.summary?.averagePosition || 15;
+  if (avgPosition > 8) {
+    insights.push({
+      id: `fallback-keywords-${timestamp}-2`,
+      title: 'Target Page 2 Keywords for Quick Wins',
+      description: `Your average keyword position is ${avgPosition.toFixed(1)}...`,
+      priority: 'high',
+      category: 'keyword',
+      // ... more insight data
+    });
+  }
+
+  // 3-5: Additional rule-based insights
+  // ...
+
+  return insights.slice(0, 5);
+}
+```
+
+### Fallback Triggers
+
+**Conditions that trigger fallback:**
+
+1. **API Error** - Claude API unreachable or returns error
+2. **Invalid JSON** - Response cannot be parsed
+3. **Missing Fields** - Required insight properties missing
+4. **Timeout** - API request exceeds timeout limit
+5. **Rate Limit** - Anthropic API quota exceeded
+
+### Fallback Insight Categories
+
+#### 1. Mobile Performance
+**Trigger:** `mobileScore < 75`  
+**Priority:** High if score < 50, Medium otherwise
+
+```typescript
+{
+  title: 'Improve Mobile Page Speed',
+  category: 'technical',
+  actionItems: [
+    'Compress and optimize all images to WebP format',
+    'Minimize JavaScript and CSS file sizes',
+    'Implement lazy loading for non-critical content'
+  ]
+}
+```
+
+#### 2. Keyword Position
+**Trigger:** `averagePosition > 8`  
+**Priority:** High
+
+```typescript
+{
+  title: 'Target Page 2 Keywords for Quick Wins',
+  category: 'keyword',
+  actionItems: [
+    'Identify top 5 keywords in positions 11-15',
+    'Add target keyword to H1 and first paragraph',
+    'Build 2-3 internal links to each target page'
+  ]
+}
+```
+
+#### 3. Content Expansion
+**Trigger:** Always included  
+**Priority:** Medium
+
+```typescript
+{
+  title: 'Expand Content for Target Topics',
+  category: 'content',
+  actionItems: [
+    'Identify top 5 topics relevant to your business',
+    'Create pillar pages for each main topic',
+    'Develop 8-10 supporting articles per pillar page'
+  ]
+}
+```
+
+#### 4. Technical SEO
+**Trigger:** Always included  
+**Priority:** Medium
+
+```typescript
+{
+  title: 'Enhance Technical SEO Foundation',
+  category: 'technical',
+  actionItems: [
+    'Conduct comprehensive site audit for crawl errors',
+    'Optimize XML sitemaps and robots.txt',
+    'Implement structured data markup for key pages'
+  ]
+}
+```
+
+#### 5. Performance Tracking
+**Trigger:** Always included  
+**Priority:** Low
+
+```typescript
+{
+  title: 'Implement Advanced Performance Tracking',
+  category: 'performance',
+  actionItems: [
+    'Set up conversion tracking for all business goals',
+    'Implement heat map tracking on key landing pages',
+    'Create custom dashboards for performance monitoring'
+  ]
+}
+```
+
+## Insight Data Structure
+
+### `AIInsight` Type
+
+**Location:** `src/types/google-api.ts:123`
+
+```typescript:src/types/google-api.ts
+export interface AIInsight {
+  id: string;                                    // Unique identifier
+  title: string;                                 // Action-oriented headline
+  description: string;                           // Detailed explanation
+  priority: 'high' | 'medium' | 'low';          // Impact priority
+  category: 'keyword' | 'technical' | 'content' | 'performance';
+  expectedImpact: string;                        // Quantified outcome
+  actionItems: string[];                         // Specific steps
+  dataSource: string[];                          // Data attribution
+}
+```
+
+### Example Insight Object
+
+```typescript
+{
+  id: "ai-insight-1709584320123-0",
+  title: "Optimize Top Landing Pages for Conversions",
+  description: "Your top 3 landing pages receive 65% of organic traffic but have a 72% bounce rate. Pages like /services and /pricing show high engagement time (3:24 avg) but low conversion. Improving CTAs and form design could significantly boost conversions.",
+  priority: "high",
+  category: "content",
+  expectedImpact: "Reducing bounce rate to 55% could increase conversions by 30-40%",
+  actionItems: [
+    "A/B test primary CTA placement and copy on /services page",
+    "Simplify contact form from 8 fields to 3-4 essential fields",
+    "Add trust signals (testimonials, case studies) above the fold"
+  ],
+  dataSource: [
+    "Google Analytics 4",
+    "Google Search Console"
+  ]
+}
+```
+
+## Integration Points
+
+### Report Generation Pipeline
+
+**Used in:** `src/lib/reports/generate-report.ts` (planned)
+
+```typescript
+import { AIInsightsGenerator } from '@/lib/ai/insights-generator';
+
+// After fetching all API data
+const generator = new AIInsightsGenerator();
+
+const reportData = {
+  client: clientInfo,
+  summary: aggregatedMetrics,
+  searchConsole: gscData,
+  analytics: ga4Data,
+  pageSpeed: pageSpeedData
+};
+
+const insights = await generator.generateInsights(reportData);
+
+// insights array included in final report
+```
+
+### PDF Report Display
+
+**Component:** `src/lib/pdf/components/StrategicRecommendationsPage.tsx`
+
+Insights are rendered as a dedicated page in PDF reports with:
+- Priority badges (High/Medium/Low)
+- Category icons
+- Expandable action items
+- Expected impact callouts
+
+### Database Storage
+
+Insights can be stored in the database for historical tracking:
+
+```prisma
+model Report {
+  id        String
+  insights  Json?  // Store AIInsight[] as JSON
+  // ... other fields
+}
+```
+
+## Error Handling
+
+### Comprehensive Logging
+
+**Location:** Throughout `src/lib/ai/insights-generator.ts`
+
+```typescript:src/lib/ai/insights-generator.ts
+console.log('🚀 [AI-INSIGHTS] Starting AI insights generation...');
+console.log('🚀 [AI-INSIGHTS] Input data structure:', {
+  hasClient: !!data.client,
+  hasSummary: !!data.summary,
+  totalClicks: data.summary?.totalClicks
+});
+
+console.log('🚀 [AI-INSIGHTS] Making API call to Claude...');
+
+// On success
+console.log('🚀 [AI-INSIGHTS] ✅ Successfully generated AI insights:', {
+  count: insights.length,
+  categories: insights.map(i => i.category)
+});
+
+// On error
+console.error('❌ [AI-INSIGHTS] AI insights generation failed:', {
+  error: error instanceof Error ? error.message : error,
+  stack: error instanceof Error ? error.stack : undefined
+});
+
+console.log('🔄 [AI-INSIGHTS] Falling back to rule-based insights...');
+```
+
+### Error Recovery Flow
+
+1. **Catch API Error** - Log full error details
+2. **Log Fallback** - Indicate switch to rule-based system
+3. **Generate Fallback** - Create 5 rule-based insights
+4. **Return Successfully** - Never throw error to report generation
+
+### Graceful Degradation
+
+**Philosophy:** Reports should always succeed, even if AI fails.
+
+```typescript
+try {
+  return await anthropic.messages.create(requestPayload);
+} catch (error) {
+  console.error('AI Error:', error);
+  // Return rule-based insights instead
+  return this.getFallbackInsights(data);
+}
+```
+
+## Performance Considerations
+
+### Timing
+
+**Typical Generation Time:**
+- Claude API call: 2-5 seconds
+- Parsing: < 100ms
+- Total: ~3-5 seconds per report
+
+### Cost Optimization
+
+#### Token Usage
+
+```typescript:src/lib/ai/insights-generator.ts
+estimateInsightCost(dataSize: number): number {
+  // Rough estimate: ~1500 tokens input + 500 tokens output
+  // Claude pricing: ~$0.003 per 1K tokens
+  const estimatedTokens = 2000;
+  return (estimatedTokens / 1000) * 0.003;
+}
+```
+
+**Monthly Cost Example:**
+- 100 reports/month = 200K tokens
+- Cost: $0.60/month
+- Per report: $0.006
+
+### Caching Strategy
+
+**Recommended:** Cache insights for duplicate report requests
+
+```typescript
+// Pseudo-code
+const cacheKey = `insights:${clientId}:${startDate}:${endDate}`;
+const cached = await redis.get(cacheKey);
+
+if (cached) {
+  return JSON.parse(cached);
+}
+
+const insights = await generator.generateInsights(data);
+await redis.set(cacheKey, JSON.stringify(insights), 'EX', 3600);
+```
+
+## Testing
+
+### Test Cases
+
+#### 1. Successful AI Generation
+
+```typescript
+const data = {
+  client: { domain: 'example.com' },
+  summary: { totalClicks: 1234, averagePosition: 8.5 },
+  searchConsole: { topKeywords: [...] }
+};
+
+const insights = await generator.generateInsights(data);
+
+expect(insights).toHaveLength(5);
+expect(insights[0]).toHaveProperty('title');
+expect(insights[0]).toHaveProperty('actionItems');
+```
+
+#### 2. Fallback on API Error
+
+```typescript
+// Mock API failure
+anthropicMock.mockRejectedValue(new Error('API Error'));
+
+const insights = await generator.generateInsights(data);
+
+// Should still return 5 insights
+expect(insights).toHaveLength(5);
+expect(insights[0].id).toContain('fallback');
+```
+
+#### 3. Invalid JSON Response
+
+```typescript
+// Mock malformed response
+anthropicMock.mockResolvedValue({
+  content: [{ type: 'text', text: 'Invalid JSON{' }]
+});
+
+const insights = await generator.generateInsights(data);
+
+// Should fallback gracefully
+expect(insights).toHaveLength(5);
+```
+
+## Best Practices
+
+### Prompt Optimization
+
+1. **Include Examples** - Show Claude ideal output format
+2. **Reference Data** - Require specific metric references
+3. **Constrain Output** - Request exact JSON structure
+4. **Action-Oriented** - Demand actionable recommendations
+5. **Quantify Impact** - Ask for measurable expected outcomes
+
+### Error Handling
+
+1. **Never Fail Reports** - Always return insights (AI or fallback)
+2. **Log Extensively** - Track AI performance and failures
+3. **Monitor Costs** - Track token usage and API costs
+4. **Fallback Quality** - Ensure rule-based insights are valuable
+
+### Data Preparation
+
+1. **Clean Input** - Sanitize data before sending to Claude
+2. **Format Numbers** - Present metrics clearly
+3. **Prioritize Context** - Include most relevant data first
+4. **Limit Length** - Keep prompts under 2000 tokens
+
+## Monitoring
+
+### Metrics to Track
+
+1. **AI Success Rate** - % of reports using AI vs fallback
+2. **Generation Time** - Average time to generate insights
+3. **Token Usage** - Total tokens consumed per report
+4. **Cost per Report** - Track actual API costs
+5. **Error Types** - Categorize failures (API, parsing, timeout)
+
+### Example Logging
+
+```typescript
+// Track AI performance
+await prisma.apiUsage.create({
+  data: {
+    service: 'anthropic',
+    endpoint: 'messages',
+    tokensUsed: response.usage.total_tokens,
+    cost: estimateInsightCost(response.usage.total_tokens),
+    success: true
+  }
+});
+```

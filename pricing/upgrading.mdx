@@ -1,0 +1,391 @@
+---
+title: 'Upgrading Plans'
+description: 'How to upgrade, downgrade, or cancel your Reportr subscription'
+---
+
+Reportr makes it easy to change your plan as your agency grows. Upgrade for more capacity, downgrade to save costs, or cancel when needed - all with transparent pricing and no hidden fees.
+
+## Upgrading Your Plan
+
+### When to Upgrade
+
+Consider upgrading when you:
+
+- Reach 80% of your client limit
+- Consistently hit your monthly report limit
+- Need white-label branding features
+- Want to onboard more clients
+- Require higher priority support
+
+<Tip>
+  Reportr displays upgrade prompts when you approach plan limits, making it easy to scale at the right time.
+</Tip>
+
+### Upgrade Process
+
+<Steps>
+  <Step title="Navigate to Billing">
+    Go to **Settings** → **Subscription** in your dashboard
+  </Step>
+  
+  <Step title="Select New Plan">
+    Click **Upgrade** and choose your desired plan tier
+  </Step>
+  
+  <Step title="Review Changes">
+    See immediate limit increases and new features
+  </Step>
+  
+  <Step title="Complete Payment">
+    Redirected to PayPal for subscription creation
+  </Step>
+  
+  <Step title="Instant Activation">
+    New limits apply immediately upon payment confirmation
+  </Step>
+</Steps>
+
+### What Happens on Upgrade
+
+<Accordion title="Limits & Features">
+  **Immediate effect:**
+  - New client limit active instantly
+  - Increased report quota available immediately
+  - White-label features unlock (if applicable)
+  - Advanced branding options enabled
+  
+  **Example:** Upgrade from Starter (5 clients, 25 reports) to Professional (15 clients, 75 reports)
+  - Can add 10 more clients right away
+  - Remaining reports in current cycle: (75 - reports_used) instead of (25 - reports_used)
+</Accordion>
+
+<Accordion title="Billing Cycle">
+  **Your billing cycle does NOT reset on upgrade:**
+  - Cycle start date remains unchanged
+  - Cycle end date stays the same
+  - Report count continues from where you left off
+  - Only the limit changes, not the counting window
+  
+  **Example:**
+  - Current cycle: March 1 - March 31
+  - Used 18 reports on Starter (25 limit)
+  - Upgrade to Professional (75 limit) on March 15
+  - Cycle still ends March 31
+  - You now have 57 reports remaining (75 - 18) until March 31
+</Accordion>
+
+<Accordion title="Pricing & Billing">
+  **Prorated billing:**
+  - PayPal handles proration automatically
+  - You're charged for remaining days in current period
+  - Next billing date may adjust to new subscription start
+  
+  **No duplicate charges:**
+  - System prevents creating duplicate subscriptions
+  - Must cancel existing subscription before switching
+  - API enforced in `src/app/api/payments/create-subscription/route.ts:38`
+</Accordion>
+
+## Downgrading Your Plan
+
+### When to Downgrade
+
+Downgrade if you:
+
+- Have fewer clients than before
+- Generate reports less frequently
+- Want to reduce costs
+- No longer need advanced features
+
+<Warning>
+  Ensure your current usage fits within the lower plan's limits before downgrading. If you have 10 clients and downgrade to Starter (5 clients), you'll need to remove 5 clients first.
+</Warning>
+
+### Downgrade Process
+
+<Steps>
+  <Step title="Check Current Usage">
+    Verify clients and reports usage on dashboard
+  </Step>
+  
+  <Step title="Reduce Usage if Needed">
+    Delete excess clients to fit new plan limits
+  </Step>
+  
+  <Step title="Cancel Current Subscription">
+    Go to **Settings** → **Subscription** → **Cancel Subscription**
+  </Step>
+  
+  <Step title="Wait for Cycle End">
+    Current plan remains active until billing period ends
+  </Step>
+  
+  <Step title="Subscribe to New Plan">
+    After cycle ends, subscribe to desired lower tier
+  </Step>
+</Steps>
+
+### Downgrade Behavior
+
+**Access until end of period:**
+- Your paid plan continues until `subscriptionEndDate`
+- All features remain available
+- Report limits don't change mid-cycle
+- White-label stays active (if was enabled)
+
+**After subscription ends:**
+- Plan automatically reverts to FREE
+- Client limit enforced (must have ≤ 1 client for FREE)
+- Report limit drops to 5/month
+- White-label features disabled
+
+**Example Timeline:**
+```
+March 1: Professional plan active (15 clients, 75 reports)
+March 15: Cancel subscription
+March 15-31: Professional features still available
+March 31: Subscription ends, drops to FREE plan
+April 1: Must comply with FREE limits (1 client, 5 reports)
+```
+
+## Canceling Your Subscription
+
+### Cancellation Process
+
+Reportr offers straightforward cancellation:
+
+1. **Navigate to subscription settings**
+2. **Click "Cancel Subscription" button**
+3. **Confirm cancellation**
+4. **Receive confirmation message**
+
+**API endpoint:** `POST /api/payments/cancel-subscription`
+
+### What Happens on Cancellation
+
+<Accordion title="Immediate Changes">
+  - Subscription marked as cancelled in database
+  - `cancelledAt` timestamp recorded
+  - `subscriptionEndDate` set to end of current billing period
+  - PayPal subscription cancelled (no future charges)
+  
+  **Database updates:**
+  ```typescript
+  {
+    subscriptionStatus: "cancelled",
+    cancelledAt: new Date(),
+    subscriptionEndDate: billingCycleEnd
+  }
+  ```
+</Accordion>
+
+<Accordion title="Access Retention">
+  **You keep access until subscription period ends:**
+  - All paid features remain active
+  - Current plan limits still apply
+  - Billing cycle continues as normal
+  - White-label features stay enabled
+  
+  **Example:**
+  - Cancel on March 15
+  - Billing cycle ends March 31
+  - Keep Professional features until March 31 11:59 PM
+  - Drop to FREE plan on April 1
+</Accordion>
+
+<Accordion title="After Subscription Ends">
+  **Automatic downgrade to FREE:**
+  - Plan changes to FREE tier
+  - Client limit reduced to 1
+  - Report limit drops to 5/month
+  - White-label disabled
+  - Must delete excess clients to continue using Reportr
+  
+  **Data retention:**
+  - All historical reports preserved
+  - Client data remains in database
+  - Google API connections maintained
+  - Can reactivate subscription anytime
+</Accordion>
+
+## Reactivating After Cancellation
+
+### Reactivation Process
+
+To reactivate your subscription:
+
+<Steps>
+  <Step title="Log In to Dashboard">
+    Access your Reportr account
+  </Step>
+  
+  <Step title="Navigate to Subscription">
+    Go to **Settings** → **Subscription**
+  </Step>
+  
+  <Step title="Choose Plan">
+    Select the plan tier you want
+  </Step>
+  
+  <Step title="Complete Payment">
+    Subscribe through PayPal
+  </Step>
+  
+  <Step title="Instant Activation">
+    New plan and limits active immediately
+  </Step>
+</Steps>
+
+**What's preserved:**
+- All historical data (clients, reports)
+- Google API connections
+- Account settings and preferences
+- Custom branding configurations
+
+**What resets:**
+- New billing cycle starts immediately
+- Report counter starts at 0
+- New 30-day rolling window begins
+
+## Subscription Management Best Practices
+
+### Plan Selection
+
+<CardGroup cols={2}>
+  <Card title="Monitor Usage" icon="chart-line">
+    Check dashboard regularly to track client and report consumption
+  </Card>
+  
+  <Card title="Plan Ahead" icon="calendar">
+    Upgrade before hitting limits to avoid workflow disruptions
+  </Card>
+  
+  <Card title="Seasonal Adjust" icon="calendar-days">
+    Scale plan up during busy seasons, down during slow periods
+  </Card>
+  
+  <Card title="Test Features" icon="flask">
+    Use trial to test white-label and advanced features before committing
+  </Card>
+</CardGroup>
+
+### Cost Optimization
+
+- **Start Small**: Begin with Starter, upgrade as client base grows
+- **Annual Planning**: Estimate yearly client and report needs
+- **Feature Usage**: Pay for white-label only if clients require it
+- **Downgrade Off-Season**: Reduce plan during predictably slow periods
+
+### Avoiding Disruptions
+
+<Warning>
+  **Before downgrading, ensure:**
+  - Current client count ≤ new plan's client limit
+  - Monthly report usage fits new limit
+  - No critical reports due before cycle resets
+  - Team is aware of reduced capacity
+</Warning>
+
+## Technical Implementation
+
+### Subscription API Endpoints
+
+**Create Subscription:**
+```
+POST /api/payments/create-subscription
+Body: { planId: string, plan: Plan }
+Response: { subscriptionId: string, approvalUrl: string }
+```
+
+**Cancel Subscription:**
+```
+POST /api/payments/cancel-subscription
+Response: { success: boolean, message: string }
+```
+
+**Activate Subscription:**
+```
+POST /api/payments/activate-subscription
+Body: { subscriptionId: string }
+Response: { success: boolean }
+```
+
+### Subscription Service
+
+Core logic in `src/lib/services/subscription-service.ts`:
+
+- `cancelUserSubscription()` - Handle cancellation flow
+- `activateSubscription()` - Process PayPal confirmations
+- `updateUserPlan()` - Apply plan changes
+- `validateSubscriptionAccess()` - Check subscription status
+
+### Database Schema
+
+Subscription tracking fields in `User` model:
+
+```prisma
+model User {
+  plan                 Plan      @default(FREE)
+  subscriptionStatus   String    @default("free")
+  paypalSubscriptionId String?   @unique
+  cancelledAt          DateTime?
+  subscriptionEndDate  DateTime?
+  billingCycleStart    DateTime  @default(now())
+  billingCycleEnd      DateTime?
+}
+```
+
+## PayPal Integration
+
+Reportr uses PayPal for subscription management:
+
+- **Subscription Creation**: PayPal hosted checkout
+- **Recurring Billing**: Automatic monthly charges
+- **Cancellation**: Immediate in PayPal, access until period end
+- **Webhook**: Real-time subscription status updates
+
+**PayPal client:** `src/lib/services/paypal-client.ts`
+
+## Common Questions
+
+<AccordionGroup>
+  <Accordion title="Can I upgrade in the middle of a billing cycle?">
+    Yes! Upgrades take effect immediately. PayPal handles prorated charges automatically, and your billing cycle continues without resetting.
+  </Accordion>
+  
+  <Accordion title="Do I lose unused reports when upgrading?">
+    No. Your report usage carries over, and you immediately get access to the new higher limit. For example, if you used 18/25 reports on Starter and upgrade to Professional (75 limit), you have 57 reports remaining in the current cycle.
+  </Accordion>
+  
+  <Accordion title="What happens if I exceed limits after downgrading?">
+    If you downgrade with more clients or reports than the new plan allows, you must reduce your usage before the downgrade takes effect. The system prevents adding new clients or generating reports if you exceed limits.
+  </Accordion>
+  
+  <Accordion title="Can I get a refund if I cancel?">
+    Cancellations follow PayPal's refund policy. You retain access until the end of your paid period, so effectively you're using what you've paid for. Contact support for special circumstances.
+  </Accordion>
+  
+  <Accordion title="How do I prevent duplicate subscriptions?">
+    The system automatically prevents duplicate subscriptions. If you try to create a new subscription while one is active, you'll receive an error message requiring you to cancel the existing subscription first.
+  </Accordion>
+</AccordionGroup>
+
+## Need Help?
+
+<CardGroup cols={2}>
+  <Card title="Subscription Guide" icon="book" href="/guides/subscription-management">
+    Complete guide to managing subscriptions
+  </Card>
+  
+  <Card title="Plan Limits" icon="gauge" href="/pricing/plan-limits">
+    Detailed breakdown of all plan limits
+  </Card>
+  
+  <Card title="Billing Cycles" icon="calendar" href="/pricing/billing-cycles">
+    How usage tracking and resets work
+  </Card>
+  
+  <Card title="Support" icon="life-ring">
+    Contact support for subscription assistance
+  </Card>
+</CardGroup>

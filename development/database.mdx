@@ -1,0 +1,627 @@
+---
+title: 'Database Schema'
+description: 'Understanding the Reportr database structure and Prisma ORM setup'
+---
+
+## Overview
+
+Reportr uses **PostgreSQL** as its database with **Prisma ORM** for type-safe database access. The schema is designed to support multi-tenant SaaS operations with white-label branding, report generation, and payment processing.
+
+## Database Setup
+
+### Initial Setup
+
+1. **Create PostgreSQL Database**
+
+```bash
+createdb seo_reportbot
+```
+
+2. **Configure Connection String**
+
+Add to your `.env` file:
+
+```bash
+DATABASE_URL="postgresql://username:password@localhost:5432/seo_reportbot"
+```
+
+3. **Run Migrations**
+
+Apply the database schema:
+
+```bash
+npm run db:migrate
+```
+
+4. **Seed Sample Data** (Optional)
+
+Populate with test data:
+
+```bash
+npm run db:seed
+```
+
+### Database Commands
+
+<CodeGroup>
+```bash Run Migrations
+npm run db:migrate
+```
+
+```bash Push Schema Changes
+npm run db:push
+```
+
+```bash Seed Database
+npm run db:seed
+```
+
+```bash Open Prisma Studio
+npm run db:studio
+```
+</CodeGroup>
+
+## Core Models
+
+### User
+
+Stores agency owners with white-label branding settings and subscription information.
+
+```prisma
+model User {
+  id                   String    @id @default(cuid())
+  name                 String?
+  email                String    @unique
+  emailVerified        DateTime?
+  image                String?
+  
+  // White-label branding
+  whiteLabelEnabled    Boolean   @default(false)
+  companyName          String?
+  primaryColor         String    @default("#8B5CF6")
+  logo                 String?
+  website              String?
+  supportEmail         String?
+  
+  // Subscription
+  plan                 Plan      @default(FREE)
+  planExpires          DateTime?
+  subscriptionStatus   String    @default("free")
+  billingCycleStart    DateTime  @default(now())
+  billingCycleEnd      DateTime?
+  
+  // PayPal integration
+  paypalCustomerId     String?   @unique
+  paypalSubscriptionId String?   @unique
+  cancelledAt          DateTime?
+  subscriptionEndDate  DateTime?
+  
+  // Trial tracking
+  trialStartDate       DateTime?
+  trialEndDate         DateTime?
+  trialUsed            Boolean   @default(false)
+  trialType            String?   // 'EMAIL' | 'PAYPAL' | null
+  signupFlow           String?   // 'FREE' | 'PAID_TRIAL' | null
+  signupIp             String?
+  welcomeEmailSent     Boolean   @default(false)
+  
+  // Relations
+  clients              Client[]
+  payments             Payment[]
+  reports              Report[]
+  emailLogs            EmailLog[]
+  
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+}
+```
+
+**Key Fields:**
+- `whiteLabelEnabled` - Controls whether user can customize branding
+- `companyName` - Agency name displayed in reports
+- `primaryColor` - Brand color for reports and UI
+- `logo` - Brand logo URL (stored in Vercel Blob)
+- `plan` - Current subscription tier (FREE, STARTER, PROFESSIONAL, AGENCY)
+- `subscriptionStatus` - Current status (free, active, cancelled, expired)
+
+### Client
+
+Represents agency clients and their Google API connections.
+
+```prisma
+model Client {
+  id                           String    @id @default(cuid())
+  name                         String
+  domain                       String
+  contactEmail                 String?
+  contactName                  String?
+  
+  // Google API connections
+  googleSearchConsoleConnected Boolean   @default(false)
+  googleAnalyticsConnected     Boolean   @default(false)
+  searchConsolePropertyUrl     String?
+  googleAnalyticsPropertyId    String?
+  ga4PropertyId                String?
+  ga4PropertyName              String?
+  gscSiteUrl                   String?
+  gscSiteName                  String?
+  
+  // OAuth tokens (encrypted in production)
+  googleAccessToken            String?
+  googleRefreshToken           String?
+  googleTokenExpiry            DateTime?
+  searchConsoleRefreshToken    String?
+  analyticsRefreshToken        String?
+  
+  // Data fetching
+  googleConnectedAt            DateTime?
+  lastDataFetch                DateTime?
+  dataFetchStatus              String?
+  customMetrics                Json?     // Custom metric definitions
+  
+  // Report tracking
+  lastReportGenerated          DateTime?
+  totalReportsGenerated        Int       @default(0)
+  
+  // Relations
+  userId                       String
+  user                         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reports                      Report[]
+  
+  createdAt                    DateTime  @default(now())
+  updatedAt                    DateTime  @updatedAt
+  
+  @@index([userId])
+  @@index([domain])
+}
+```
+
+**Key Fields:**
+- `domain` - Client's website domain
+- `googleRefreshToken` - OAuth refresh token for API access
+- `ga4PropertyId` - Google Analytics 4 property identifier
+- `gscSiteUrl` - Google Search Console site URL
+- `customMetrics` - JSON array of custom metrics to track
+
+### Report
+
+Stores generated SEO reports with processing metadata and AI insights.
+
+```prisma
+model Report {
+  id                    String       @id @default(cuid())
+  title                 String
+  status                ReportStatus @default(PENDING)
+  
+  // Report data
+  data                  Json?        // Raw data from APIs
+  pdfUrl                String?      // Vercel Blob URL
+  pdfSize               Int?         // Size in bytes
+  
+  // Processing metadata
+  processingStartedAt   DateTime?
+  processingCompletedAt DateTime?
+  generationTimeMs      Int?         // Time taken in milliseconds
+  errorMessage          String?
+  
+  // AI insights
+  aiInsights            Json?        // Array of insight objects
+  aiInsightsSource      String?      // "ai" | "rule-based" | "fallback"
+  aiInsightsGeneratedAt DateTime?
+  aiTokensUsed          Int?         // Token count for cost tracking
+  aiCostUsd             Float?       // Cost in USD
+  aiError               String?
+  
+  // Relations
+  clientId              String
+  userId                String
+  client                Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  user                  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  
+  @@index([clientId])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+enum ReportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+```
+
+**Key Fields:**
+- `status` - Current processing state
+- `data` - JSON containing all fetched API data
+- `pdfUrl` - URL of generated PDF in Vercel Blob storage
+- `aiInsights` - AI-generated insights from Claude API
+- `generationTimeMs` - Performance tracking
+
+### Payment
+
+Tracks payment transactions and subscriptions.
+
+```prisma
+model Payment {
+  id                   String   @id @default(cuid())
+  userId               String
+  paypalOrderId        String   @unique
+  paypalSubscriptionId String?
+  amount               Decimal  @db.Decimal(10, 2)
+  currency             String   @default("USD")
+  status               String
+  plan                 Plan
+  metadata             Json?
+  
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([status])
+  @@index([paypalSubscriptionId])
+}
+
+enum Plan {
+  FREE
+  STARTER
+  PROFESSIONAL
+  AGENCY
+}
+```
+
+## Supporting Models
+
+### ApiUsage
+
+Tracks API usage for billing and rate limiting.
+
+```prisma
+model ApiUsage {
+  id                 String   @id @default(cuid())
+  userId             String
+  endpoint           String
+  method             String
+  requestSize        Int?
+  responseSize       Int?
+  responseTime       Int?     // In milliseconds
+  statusCode         Int
+  rateLimitRemaining Int?
+  cost               Float    @default(0.0)
+  timestamp          DateTime @default(now())
+  
+  @@index([userId])
+  @@index([timestamp])
+}
+```
+
+### WebhookEvent
+
+Queue for processing webhook events (PayPal, Stripe, etc.).
+
+```prisma
+model WebhookEvent {
+  id            String        @id @default(cuid())
+  eventType     String
+  eventData     Json
+  status        WebhookStatus @default(PENDING)
+  attempts      Int           @default(0)
+  maxAttempts   Int           @default(3)
+  nextAttemptAt DateTime?
+  lastError     String?
+  
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  
+  @@index([status])
+  @@index([nextAttemptAt])
+}
+
+enum WebhookStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+```
+
+### EmailLog
+
+Prevents duplicate email sends and tracks email campaigns.
+
+```prisma
+model EmailLog {
+  id        String   @id @default(cuid())
+  userId    String
+  emailType String   // "welcome", "onboarding_day1", "trial_3days"
+  sentAt    DateTime @default(now())
+  metadata  Json?
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, emailType]) // Prevent duplicate sends
+  @@index([userId])
+  @@index([emailType])
+  @@index([sentAt])
+}
+```
+
+### VerificationToken
+
+Email verification tokens for user onboarding.
+
+```prisma
+model VerificationToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  email     String
+  expires   DateTime
+  createdAt DateTime @default(now())
+  
+  @@index([email])
+  @@index([token])
+}
+```
+
+### AppSetting
+
+Global application settings stored in database.
+
+```prisma
+model AppSetting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       Json
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+```
+
+## Prisma Configuration
+
+The Prisma schema uses connection pooling for optimal performance:
+
+```prisma
+datasource db {
+  provider  = "postgresql"
+  url       = env("PRISMA_DATABASE_URL") // Pooled connection
+  directUrl = env("DATABASE_URL")        // Direct connection for migrations
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+```
+
+## Database Relationships
+
+### Entity Relationship Diagram
+
+```mermaid
+erDiagram
+    User ||--o{ Client : owns
+    User ||--o{ Report : creates
+    User ||--o{ Payment : makes
+    User ||--o{ EmailLog : receives
+    Client ||--o{ Report : has
+    
+    User {
+        string id PK
+        string email UK
+        string companyName
+        string primaryColor
+        string plan
+    }
+    
+    Client {
+        string id PK
+        string userId FK
+        string domain
+        string ga4PropertyId
+        string gscSiteUrl
+    }
+    
+    Report {
+        string id PK
+        string userId FK
+        string clientId FK
+        string status
+        json data
+        string pdfUrl
+    }
+```
+
+## Working with Prisma
+
+### Accessing the Database
+
+Prisma Client is available via the centralized database connection:
+
+```typescript
+import { db } from '@/lib/db'
+
+// Query users
+const users = await db.user.findMany({
+  where: { plan: 'PROFESSIONAL' },
+  include: { clients: true }
+})
+
+// Create a client
+const client = await db.client.create({
+  data: {
+    name: 'Acme Corp',
+    domain: 'acme.com',
+    userId: user.id
+  }
+})
+
+// Update report status
+const report = await db.report.update({
+  where: { id: reportId },
+  data: { 
+    status: 'COMPLETED',
+    pdfUrl: 'https://blob.vercel-storage.com/...'
+  }
+})
+```
+
+### Type Safety
+
+Prisma generates TypeScript types automatically:
+
+```typescript
+import { User, Client, Report, ReportStatus } from '@prisma/client'
+
+// Full type safety
+const user: User = await db.user.findUnique({ where: { id } })
+
+// Type-safe enums
+const status: ReportStatus = 'PROCESSING'
+```
+
+### Migrations
+
+Create a new migration after schema changes:
+
+```bash
+npm run db:migrate
+```
+
+This will:
+1. Prompt for a migration name
+2. Generate SQL migration files
+3. Apply changes to the database
+4. Regenerate Prisma Client
+
+## Performance Considerations
+
+### Indexing Strategy
+
+The schema includes strategic indexes for common queries:
+
+- `User.email` - Unique index for authentication
+- `Client.userId` - Foreign key index for user's clients
+- `Client.domain` - Index for domain lookups
+- `Report.status` - Index for filtering by status
+- `Report.createdAt` - Index for date-based queries
+- `Payment.paypalSubscriptionId` - Index for webhook processing
+
+### Query Optimization
+
+**Use `select` to limit fields:**
+
+```typescript
+const users = await db.user.findMany({
+  select: {
+    id: true,
+    name: true,
+    email: true
+  }
+})
+```
+
+**Use `include` for relations:**
+
+```typescript
+const client = await db.client.findUnique({
+  where: { id },
+  include: {
+    reports: {
+      where: { status: 'COMPLETED' },
+      orderBy: { createdAt: 'desc' },
+      take: 10
+    }
+  }
+})
+```
+
+## Prisma Studio
+
+Prisma Studio provides a GUI for database management:
+
+```bash
+npm run db:studio
+```
+
+This opens a browser interface at `http://localhost:5555` where you can:
+- Browse all tables and records
+- Edit data directly
+- Run queries
+- Test relationships
+
+## Backup and Recovery
+
+### Export Database
+
+```bash
+pg_dump seo_reportbot > backup.sql
+```
+
+### Restore Database
+
+```bash
+psql seo_reportbot < backup.sql
+```
+
+### Reset Database
+
+<Warning>
+  This will delete all data. Only use in development.
+</Warning>
+
+```bash
+npx prisma migrate reset
+```
+
+## Troubleshooting
+
+### Migration Conflicts
+
+If migrations are out of sync:
+
+```bash
+# Reset migrations (development only)
+npx prisma migrate reset
+
+# Or resolve manually
+npx prisma migrate resolve --applied <migration_name>
+```
+
+### Prisma Client Out of Sync
+
+Regenerate the Prisma Client:
+
+```bash
+npx prisma generate
+```
+
+### Connection Pool Exhausted
+
+Adjust connection limits in production:
+
+```bash
+DATABASE_URL="postgresql://user:pass@host:5432/db?connection_limit=10"
+```
+
+## Best Practices
+
+1. **Always use transactions** for multi-step operations
+2. **Index foreign keys** for better join performance
+3. **Use `select`** to avoid over-fetching data
+4. **Validate data** with Zod schemas before database operations
+5. **Encrypt sensitive data** like OAuth tokens (use `@encrypted` in production)
+6. **Use cascading deletes** to maintain referential integrity
+7. **Monitor query performance** with Prisma's logging
+
+## Next Steps
+
+- Review [Environment Variables](/development/environment-variables) for database configuration
+- Check [Setup Guide](/development/setup) for initial configuration
+- Read Prisma documentation at [prisma.io/docs](https://prisma.io/docs)

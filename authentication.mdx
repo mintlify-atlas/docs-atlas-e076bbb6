@@ -1,0 +1,607 @@
+---
+title: Authentication
+description: Understand how Reportr handles authentication, Google OAuth, and secure token management
+---
+
+# Authentication
+
+Reportr uses NextAuth.js with Google OAuth for secure, seamless authentication. This page explains how authentication works, why we use Google OAuth, and how tokens are managed.
+
+## Overview
+
+Reportr requires Google OAuth because we need access to:
+- **Google Search Console API** - for organic search data
+- **Google Analytics 4 API** - for website analytics
+- **User profile information** - for account management
+
+<Info>
+  All authentication is handled server-side with secure token storage. Your Google refresh tokens are encrypted and stored in PostgreSQL.
+</Info>
+
+## Authentication Flow
+
+<Steps>
+  <Step title="User Clicks Sign In">
+    The user clicks "Sign in with Google" on the homepage or login page.
+    
+    ```tsx
+    // NextAuth.js configuration
+    export const authOptions: NextAuthOptions = {
+      providers: [
+        GoogleProvider({
+          clientId: process.env.GOOGLE_CLIENT_ID!,
+          clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+        })
+      ],
+      session: {
+        strategy: 'jwt' // JWT-based sessions for scalability
+      }
+    };
+    ```
+  </Step>
+  
+  <Step title="Redirect to Google">
+    User is redirected to Google's OAuth consent screen with requested scopes:
+    
+    - `openid` - basic authentication
+    - `profile` - name and profile picture
+    - `email` - email address
+    - `https://www.googleapis.com/auth/webmasters.readonly` - Search Console access
+    - `https://www.googleapis.com/auth/analytics.readonly` - Analytics access
+  </Step>
+  
+  <Step title="User Grants Permission">
+    After the user approves, Google redirects back to Reportr with an authorization code.
+  </Step>
+  
+  <Step title="Token Exchange">
+    NextAuth.js exchanges the authorization code for:
+    - **Access token** - short-lived (1 hour)
+    - **Refresh token** - long-lived (no expiration)
+    - **ID token** - contains user profile info
+  </Step>
+  
+  <Step title="User Creation/Update">
+    Reportr checks if the user exists and creates/updates accordingly:
+    
+    ```tsx
+    callbacks: {
+      async signIn({ user, account, profile }) {
+        if (account?.provider === 'google' && user.email) {
+          // Detect signup flow from cookie
+          let signupFlow = 'FREE'; // Default
+          const signupIntent = cookies().get('signupIntent');
+          signupFlow = signupIntent?.value || 'FREE';
+          
+          // Check if user exists
+          let existingUser = await prisma.user.findUnique({
+            where: { email: user.email }
+          });
+          
+          if (!existingUser) {
+            // Create new user
+            existingUser = await prisma.user.create({
+              data: {
+                email: user.email,
+                name: user.name,
+                image: user.image,
+                signupFlow: signupFlow, // 'FREE' or 'PAID_TRIAL'
+                trialUsed: false
+              }
+            });
+            
+            // Send welcome email (non-blocking)
+            sendWelcomeEmail(existingUser.id, user.email, user.name);
+          }
+          
+          return true;
+        }
+        return true;
+      }
+    }
+    ```
+  </Step>
+  
+  <Step title="Session Created">
+    A JWT session is created with user information:
+    
+    ```tsx
+    session: ({ session, token }) => {
+      return {
+        ...session,
+        user: {
+          ...session.user,
+          id: token.sub!,
+          emailVerified: token.emailVerified as boolean,
+          paypalSubscriptionId: token.paypalSubscriptionId,
+          subscriptionStatus: token.subscriptionStatus,
+          signupFlow: token.signupFlow
+        }
+      }
+    }
+    ```
+  </Step>
+  
+  <Step title="Redirect to Dashboard">
+    User is redirected to `/dashboard` with an active session.
+    
+    <Tabs>
+      <Tab title="FREE Users">
+        Redirected to dashboard with email verification banner:
+        
+        ```tsx
+        // Show verification banner for FREE unverified users
+        const showVerificationBanner = 
+          session?.user?.signupFlow === 'FREE' && 
+          !session?.user?.emailVerified &&
+          !session?.user?.paypalSubscriptionId;
+        
+        if (showVerificationBanner) {
+          return <EmailVerificationBanner />;
+        }
+        ```
+      </Tab>
+      
+      <Tab title="PAID_TRIAL Users">
+        Immediate full access (no verification required):
+        
+        ```tsx
+        // Paid users skip email verification
+        const hasAccess = 
+          user.paypalSubscriptionId || 
+          user.signupFlow === 'PAID_TRIAL';
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+</Steps>
+
+## Email Verification (FREE Plan Only)
+
+<Warning>
+  Email verification is **required only for FREE plan users**. Paid plan users skip this step entirely.
+</Warning>
+
+### Why Verify Email?
+
+Email verification for FREE users:
+- Prevents abuse and spam accounts
+- Ensures valid contact information
+- Activates the 14-day trial period
+
+### Verification Flow
+
+<Steps>
+  <Step title="Signup Detected">
+    When a FREE user signs up, a verification token is generated:
+    
+    ```tsx
+    // Generate verification token
+    const token = await generateVerificationToken(email);
+    
+    // Token model
+    {
+      id: "token_abc123",
+      token: "verify_xyz789",
+      email: "user@example.com",
+      expires: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+      createdAt: new Date()
+    }
+    ```
+  </Step>
+  
+  <Step title="Email Sent">
+    A verification email is sent via Resend:
+    
+    ```tsx
+    await resend.emails.send({
+      from: process.env.FROM_EMAIL,
+      to: email,
+      subject: 'Verify your email - Reportr',
+      html: `<a href="${verificationUrl}">Click here to verify</a>`
+    });
+    ```
+  </Step>
+  
+  <Step title="User Clicks Link">
+    The verification link points to `/api/auth/verify?token=xyz789`.
+  </Step>
+  
+  <Step title="Token Validated">
+    Server validates the token and updates the user:
+    
+    ```tsx
+    // Verify token
+    const verificationToken = await prisma.verificationToken.findUnique({
+      where: { token: token }
+    });
+    
+    if (!verificationToken) {
+      return { error: 'Invalid token' };
+    }
+    
+    if (new Date() > verificationToken.expires) {
+      return { error: 'Token expired' };
+    }
+    
+    // Update user
+    await prisma.user.update({
+      where: { email: verificationToken.email },
+      data: {
+        emailVerified: new Date(),
+        trialStartDate: new Date(),
+        trialEndDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+        trialUsed: true,
+        trialType: 'EMAIL'
+      }
+    });
+    
+    // Delete token
+    await prisma.verificationToken.delete({
+      where: { id: verificationToken.id }
+    });
+    ```
+  </Step>
+  
+  <Step title="Redirect to Dashboard">
+    User is redirected to `/dashboard?verified=true&unlocked=true` with success message.
+  </Step>
+</Steps>
+
+### Resending Verification Email
+
+Users can resend the verification email:
+
+```tsx
+// From dashboard
+const handleResendEmail = async () => {
+  const response = await fetch('/api/auth/resend-verification', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: session.user.email })
+  });
+  
+  if (response.ok) {
+    // Show success message
+  }
+};
+```
+
+## Google Token Management
+
+Reportr stores Google OAuth tokens to access APIs on your behalf:
+
+### Token Storage
+
+```tsx
+// Client model stores tokens per client
+model Client {
+  id                    String    @id @default(cuid())
+  // ... other fields
+  googleRefreshToken    String?   // Encrypted refresh token
+  googleAccessToken     String?   // Current access token
+  googleTokenExpiry     DateTime? // When access token expires
+  googleConnectedAt     DateTime? // When Google was connected
+}
+```
+
+<Info>
+  Refresh tokens are stored in the `Client` model (not `User`) because each client website has its own Google account connection.
+</Info>
+
+### Token Refresh
+
+Access tokens expire after 1 hour. Reportr automatically refreshes them:
+
+```tsx
+// src/lib/utils/refresh-google-token.ts
+export async function createAuthenticatedGoogleClient(clientId: string) {
+  const client = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: {
+      googleRefreshToken: true,
+      googleAccessToken: true,
+      googleTokenExpiry: true
+    }
+  });
+  
+  if (!client?.googleRefreshToken) {
+    throw new GoogleTokenError(
+      'Google account not connected',
+      'NOT_CONNECTED'
+    );
+  }
+  
+  // Check if token is expired
+  const now = new Date();
+  const expiry = client.googleTokenExpiry || now;
+  
+  if (expiry <= now) {
+    // Refresh the token
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      process.env.GOOGLE_REDIRECT_URI
+    );
+    
+    oauth2Client.setCredentials({
+      refresh_token: client.googleRefreshToken
+    });
+    
+    const { credentials } = await oauth2Client.refreshAccessToken();
+    
+    // Update database
+    await prisma.client.update({
+      where: { id: clientId },
+      data: {
+        googleAccessToken: credentials.access_token,
+        googleTokenExpiry: new Date(credentials.expiry_date!)
+      }
+    });
+    
+    return oauth2Client;
+  }
+  
+  // Token still valid, reuse it
+  const oauth2Client = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET
+  );
+  
+  oauth2Client.setCredentials({
+    access_token: client.googleAccessToken,
+    refresh_token: client.googleRefreshToken
+  });
+  
+  return oauth2Client;
+}
+```
+
+### Error Handling
+
+Custom error class for token issues:
+
+```tsx
+export class GoogleTokenError extends Error {
+  code: string;
+  
+  constructor(message: string, code: string) {
+    super(message);
+    this.name = 'GoogleTokenError';
+    this.code = code;
+  }
+}
+
+// Usage in API calls
+try {
+  const auth = await createAuthenticatedGoogleClient(clientId);
+  const searchconsole = google.searchconsole({ version: 'v1', auth });
+  // ... make API calls
+} catch (error) {
+  if (error instanceof GoogleTokenError) {
+    if (error.code === 'NOT_CONNECTED') {
+      return { error: 'Please connect Google account first' };
+    }
+    if (error.code === 'REFRESH_FAILED') {
+      return { error: 'Please reconnect your Google account' };
+    }
+  }
+}
+```
+
+## Session Management
+
+### Server-Side Authentication
+
+Protect API routes with authentication:
+
+```tsx
+// src/lib/auth-helpers.ts
+export async function requireUser() {
+  const session = await getServerSession(authOptions);
+  
+  if (!session?.user?.id) {
+    throw new Error('Unauthorized');
+  }
+  
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id }
+  });
+  
+  if (!user) {
+    throw new Error('Unauthorized');
+  }
+  
+  return user;
+}
+
+// Usage in API routes
+export async function POST(request: NextRequest) {
+  try {
+    const user = await requireUser();
+    // ... handle authenticated request
+  } catch (error: any) {
+    if (error.message === 'Unauthorized') {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+  }
+}
+```
+
+### Client-Side Authentication
+
+Access session data on the client:
+
+```tsx
+import { useSession } from 'next-auth/react';
+
+function DashboardPage() {
+  const { data: session, status } = useSession();
+  
+  if (status === 'loading') {
+    return <div>Loading...</div>;
+  }
+  
+  if (status === 'unauthenticated') {
+    redirect('/login');
+  }
+  
+  return (
+    <div>
+      <h1>Welcome, {session.user.name}</h1>
+      <p>Email: {session.user.email}</p>
+      <p>Plan: {session.user.plan}</p>
+    </div>
+  );
+}
+```
+
+### Session Data Structure
+
+```tsx
+interface Session {
+  user: {
+    id: string;
+    name?: string | null;
+    email?: string | null;
+    image?: string | null;
+    emailVerified?: boolean;
+    paypalSubscriptionId?: string | null;
+    subscriptionStatus?: string;
+    signupFlow?: string | null; // 'FREE' | 'PAID_TRIAL'
+  };
+}
+```
+
+## Security Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Token Encryption" icon="lock">
+    All OAuth tokens are encrypted before storage in PostgreSQL.
+  </Card>
+  
+  <Card title="HTTPS Only" icon="shield">
+    All authentication flows require HTTPS in production.
+  </Card>
+  
+  <Card title="Secure Cookies" icon="cookie">
+    Session cookies are httpOnly, secure, and sameSite.
+  </Card>
+  
+  <Card title="Token Rotation" icon="rotate">
+    Access tokens are automatically refreshed every hour.
+  </Card>
+</CardGroup>
+
+## Environment Variables
+
+Required environment variables for authentication:
+
+```bash
+# NextAuth.js
+NEXTAUTH_SECRET="your-nextauth-secret-here"
+NEXTAUTH_URL="http://localhost:3000" # or your production URL
+
+# Google OAuth
+GOOGLE_CLIENT_ID="your-google-client-id"
+GOOGLE_CLIENT_SECRET="your-google-client-secret"
+GOOGLE_REDIRECT_URI="http://localhost:3000/api/auth/callback/google"
+
+# Email Service (Resend)
+RESEND_API_KEY="re_your_api_key"
+FROM_EMAIL="hello@reportr.agency"
+REPLY_TO_EMAIL="support@reportr.agency"
+```
+
+<Warning>
+  Never commit `.env` files to version control. Use `.env.example` as a template.
+</Warning>
+
+## OAuth Consent Screen Setup
+
+To enable Google OAuth, configure your OAuth consent screen in Google Cloud Console:
+
+<Steps>
+  <Step title="Create OAuth Client">
+    1. Go to [Google Cloud Console](https://console.cloud.google.com)
+    2. Select your project (or create one)
+    3. Navigate to **APIs & Services > Credentials**
+    4. Click **Create Credentials > OAuth client ID**
+  </Step>
+  
+  <Step title="Configure Consent Screen">
+    - **Application name**: Reportr
+    - **User support email**: Your email
+    - **Developer contact email**: Your email
+    - **Scopes**:
+      - `openid`
+      - `profile`
+      - `email`
+      - `https://www.googleapis.com/auth/webmasters.readonly`
+      - `https://www.googleapis.com/auth/analytics.readonly`
+  </Step>
+  
+  <Step title="Add Authorized Redirect URIs">
+    - Development: `http://localhost:3000/api/auth/callback/google`
+    - Production: `https://yourdomain.com/api/auth/callback/google`
+  </Step>
+  
+  <Step title="Copy Credentials">
+    Copy the **Client ID** and **Client Secret** to your `.env` file.
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="'Unauthorized' error on API calls">
+    **Cause**: Session expired or invalid.
+    
+    **Solution**:
+    1. Sign out and sign back in
+    2. Check that `NEXTAUTH_SECRET` is set
+    3. Verify cookies are enabled in browser
+  </Accordion>
+  
+  <Accordion title="'Google account not connected' error">
+    **Cause**: No refresh token stored for the client.
+    
+    **Solution**:
+    1. Navigate to client settings
+    2. Click "Connect Google Account"
+    3. Authorize access to Search Console and Analytics
+  </Accordion>
+  
+  <Accordion title="Token refresh fails">
+    **Cause**: Refresh token revoked or expired.
+    
+    **Solution**:
+    1. Revoke access in [Google Account Settings](https://myaccount.google.com/permissions)
+    2. Reconnect Google account in Reportr
+    3. This generates a new refresh token
+  </Accordion>
+  
+  <Accordion title="Email verification link expired">
+    **Cause**: Verification tokens expire after 24 hours.
+    
+    **Solution**:
+    1. Click "Resend Verification Email" on the dashboard banner
+    2. Check your spam/junk folder
+    3. Contact support if issues persist
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="API Reference" icon="code" href="/api/clients/create">
+    Learn about authenticated API endpoints
+  </Card>
+  
+  <Card title="Client Management" icon="users" href="/features/client-management">
+    Connect Google accounts to clients
+  </Card>
+</CardGroup>

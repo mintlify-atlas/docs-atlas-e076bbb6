@@ -1,0 +1,204 @@
+---
+title: "Create Client"
+api: "POST /api/clients"
+description: "Create a new client for your agency"
+---
+
+## Authentication
+
+Requires authenticated user session. User must meet one of the following criteria:
+- Active PayPal subscription
+- Paid trial signup flow
+- Free signup with verified email
+
+## Request Body
+
+<ParamField body="name" type="string" required>
+  Client name (minimum 2 characters)
+</ParamField>
+
+<ParamField body="domain" type="string" required>
+  Client website domain (must be a valid URL)
+</ParamField>
+
+<ParamField body="contactName" type="string">
+  Primary contact person's name
+</ParamField>
+
+<ParamField body="contactEmail" type="string">
+  Primary contact email address (must be valid email format)
+</ParamField>
+
+## Response
+
+<ResponseField name="id" type="string">
+  Unique client identifier (CUID format)
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Client name
+</ResponseField>
+
+<ResponseField name="domain" type="string">
+  Client website URL
+</ResponseField>
+
+<ResponseField name="contactName" type="string">
+  Contact person name
+</ResponseField>
+
+<ResponseField name="contactEmail" type="string">
+  Contact email address
+</ResponseField>
+
+<ResponseField name="userId" type="string">
+  ID of the user who owns this client
+</ResponseField>
+
+<ResponseField name="googleSearchConsoleConnected" type="boolean">
+  Whether Google Search Console is connected (default: false)
+</ResponseField>
+
+<ResponseField name="googleAnalyticsConnected" type="boolean">
+  Whether Google Analytics is connected (default: false)
+</ResponseField>
+
+<ResponseField name="createdAt" type="string">
+  ISO 8601 timestamp when client was created
+</ResponseField>
+
+<ResponseField name="updatedAt" type="string">
+  ISO 8601 timestamp when client was last updated
+</ResponseField>
+
+## Validation Rules
+
+- **name**: Minimum 2 characters
+- **domain**: Must be a valid URL format
+- **contactEmail**: Must be valid email format (if provided)
+
+## Plan Limits
+
+Users are subject to client creation limits based on their subscription plan:
+- **FREE**: Limited number of clients
+- **PAID PLANS**: Higher or unlimited clients based on tier
+
+If limit is reached, the API returns a 403 error with upgrade information.
+
+## Error Responses
+
+<ResponseField name="error" type="string">
+  Error message describing what went wrong
+</ResponseField>
+
+<ResponseField name="requiresVerification" type="boolean">
+  Indicates if email verification is required (403 errors)
+</ResponseField>
+
+<ResponseField name="upgradeRequired" type="boolean">
+  Indicates if plan upgrade is needed (403 errors)
+</ResponseField>
+
+<ResponseField name="currentCount" type="number">
+  Current number of clients (when limit reached)
+</ResponseField>
+
+<ResponseField name="limit" type="number">
+  Maximum allowed clients for current plan
+</ResponseField>
+
+<ResponseField name="details" type="array">
+  Validation error details (400 errors)
+</ResponseField>
+
+## Example Request
+
+```bash cURL
+curl -X POST https://your-domain.com/api/clients \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=..." \
+  -d '{
+    "name": "Acme Corporation",
+    "domain": "https://acme.com",
+    "contactName": "John Doe",
+    "contactEmail": "john@acme.com"
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('/api/clients', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    name: 'Acme Corporation',
+    domain: 'https://acme.com',
+    contactName: 'John Doe',
+    contactEmail: 'john@acme.com'
+  })
+});
+
+const client = await response.json();
+```
+
+## Example Response
+
+```json 201 Success
+{
+  "id": "clx1a2b3c4d5e6f7g8h9i0j1k",
+  "name": "Acme Corporation",
+  "domain": "https://acme.com",
+  "contactName": "John Doe",
+  "contactEmail": "john@acme.com",
+  "userId": "clx0a1b2c3d4e5f6g7h8i9j0k",
+  "googleSearchConsoleConnected": false,
+  "googleAnalyticsConnected": false,
+  "searchConsolePropertyUrl": null,
+  "googleAnalyticsPropertyId": null,
+  "lastReportGenerated": null,
+  "totalReportsGenerated": 0,
+  "createdAt": "2024-03-15T10:30:00.000Z",
+  "updatedAt": "2024-03-15T10:30:00.000Z"
+}
+```
+
+```json 400 Validation Error
+{
+  "error": "Validation error",
+  "details": [
+    {
+      "code": "too_small",
+      "minimum": 2,
+      "type": "string",
+      "inclusive": true,
+      "exact": false,
+      "message": "Name must be at least 2 characters",
+      "path": ["name"]
+    }
+  ]
+}
+```
+
+```json 403 Email Verification Required
+{
+  "error": "Please verify your email before adding clients",
+  "requiresVerification": true,
+  "verificationRequired": true
+}
+```
+
+```json 403 Plan Limit Reached
+{
+  "error": "You have reached your plan limit of 3 clients",
+  "currentCount": 3,
+  "limit": 3,
+  "upgradeRequired": true
+}
+```
+
+```json 401 Unauthorized
+{
+  "error": "Unauthorized"
+}
+```

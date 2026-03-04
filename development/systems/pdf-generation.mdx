@@ -1,0 +1,804 @@
+---
+title: PDF Generation System
+description: Complete reference for React-PDF based PDF report generation architecture
+---
+
+# PDF Generation System
+
+Reportr uses React-PDF to generate professional, branded SEO reports as PDF documents. This system replaces the legacy Puppeteer-based approach with a more maintainable, performant solution.
+
+## Architecture Overview
+
+### Core Components
+
+```
+src/lib/pdf/
+├── react-pdf-generator.ts    # Main generator class
+├── types.ts                   # TypeScript interfaces
+├── template-utils.ts          # Template helpers
+└── components/               # React-PDF components
+    ├── ReportDocument.tsx     # Main document wrapper
+    ├── CoverPage.tsx         # Report cover
+    ├── ExecutiveSummary.tsx  # Executive summary page
+    ├── GSCMetricsPage.tsx    # Search Console metrics
+    ├── StandardGA4Pages.tsx  # GA4 analytics pages
+    ├── TopQueriesPage.tsx    # Top keywords table
+    ├── KeyInsightsPage.tsx   # AI insights display
+    └── styles.ts             # PDF styling constants
+```
+
+### Technology Stack
+
+- **React-PDF** (`@react-pdf/renderer`) - PDF generation engine
+- **React** - Component architecture
+- **TypeScript** - Type safety
+- **Vercel Blob** - PDF storage
+
+## React-PDF Generator
+
+### Class: `ReactPDFGenerator`
+
+**Location:** `src/lib/pdf/react-pdf-generator.ts:12`
+
+```typescript:src/lib/pdf/react-pdf-generator.ts
+class ReactPDFGenerator {
+  private options: ReactPDFGenerationOptions;
+
+  constructor(options: ReactPDFGenerationOptions = {}) {
+    this.options = {
+      timeout: 30000,
+      debug: false,
+      compressionLevel: 6,
+      ...options,
+    };
+  }
+
+  async generateReport(data: ReportData): Promise<PDFGeneratorResult>
+}
+```
+
+### Configuration Options
+
+```typescript:src/lib/pdf/react-pdf-generator.ts
+export interface ReactPDFGenerationOptions {
+  timeout?: number;           // Default: 30000ms (30 seconds)
+  debug?: boolean;            // Enable debug logging
+  compressionLevel?: number;  // PDF compression 0-9 (default: 6)
+}
+```
+
+### Singleton Instance
+
+**Location:** `src/lib/pdf/react-pdf-generator.ts:219`
+
+```typescript:src/lib/pdf/react-pdf-generator.ts
+export const pdfGenerator = new ReactPDFGenerator({
+  timeout: 30000,
+  debug: process.env.NODE_ENV === 'development',
+  compressionLevel: 6,
+});
+```
+
+**Usage:**
+
+```typescript
+import { pdfGenerator } from '@/lib/pdf/react-pdf-generator';
+
+const result = await pdfGenerator.generateReport(reportData);
+
+if (result.success) {
+  const buffer = result.pdfBuffer;
+  // Upload to Vercel Blob or save to filesystem
+}
+```
+
+## Report Generation Flow
+
+### Step-by-Step Process
+
+```typescript:src/lib/pdf/react-pdf-generator.ts
+async generateReport(data: ReportData): Promise<PDFGeneratorResult> {
+  const startTime = Date.now();
+  
+  try {
+    // 1. Validate input data
+    this.validateReportData(data);
+    
+    // 2. Load ReportDocument component
+    const { ReportDocument } = await this.loadReportDocument();
+    
+    // 3. Create React element
+    const documentElement = React.createElement(ReportDocument, { data });
+    
+    // 4. Render to PDF buffer
+    const pdfBuffer = await this.renderWithTimeout(documentElement);
+    
+    const processingTime = Date.now() - startTime;
+    
+    return {
+      success: true,
+      pdfBuffer,
+      processingTime,
+    };
+  } catch (error) {
+    // Error handling with detailed diagnostics
+    return {
+      success: false,
+      error: error.message,
+      processingTime: Date.now() - startTime,
+    };
+  }
+}
+```
+
+### 1. Data Validation
+
+**Location:** `src/lib/pdf/react-pdf-generator.ts:113`
+
+```typescript:src/lib/pdf/react-pdf-generator.ts
+private validateReportData(data: ReportData): void {
+  if (!data) throw new Error('Report data is required');
+  
+  if (!data.clientName || data.clientName.trim() === '') {
+    throw new Error('Client name is required');
+  }
+  
+  if (!data.branding || !data.branding.companyName) {
+    throw new Error('Branding configuration is required');
+  }
+  
+  if (!data.reportPeriod || !data.reportPeriod.startDate || !data.reportPeriod.endDate) {
+    throw new Error('Report date range is required');
+  }
+  
+  // Validate date format
+  const startDate = new Date(data.reportPeriod.startDate);
+  const endDate = new Date(data.reportPeriod.endDate);
+  
+  if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+    throw new Error('Invalid date format');
+  }
+  
+  if (startDate >= endDate) {
+    throw new Error('Start date must be before end date');
+  }
+}
+```
+
+### 2. Component Loading
+
+**Location:** `src/lib/pdf/react-pdf-generator.ts:151`
+
+```typescript:src/lib/pdf/react-pdf-generator.ts
+private async loadReportDocument(): Promise<{ ReportDocument: React.ComponentType<{ data: ReportData }> }> {
+  try {
+    const moduleExports = await import('./components/ReportDocument');
+    
+    if (!moduleExports.ReportDocument) {
+      throw new Error('ReportDocument component not exported');
+    }
+    
+    return { ReportDocument: moduleExports.ReportDocument };
+  } catch (error) {
+    throw new Error('Failed to load ReportDocument component');
+  }
+}
+```
+
+### 3. Buffer Rendering with Timeout
+
+**Location:** `src/lib/pdf/react-pdf-generator.ts:92`
+
+```typescript:src/lib/pdf/react-pdf-generator.ts
+private async renderWithTimeout(documentElement: React.ReactElement): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      reject(new Error(`PDF generation timed out after ${this.options.timeout}ms`));
+    }, this.options.timeout);
+
+    renderToBuffer(documentElement)
+      .then((buffer) => {
+        clearTimeout(timeoutId);
+        resolve(buffer);
+      })
+      .catch((error) => {
+        clearTimeout(timeoutId);
+        reject(error);
+      });
+  });
+}
+```
+
+**Timeout Protection:** Prevents hanging operations, ensures reliable execution.
+
+## Report Data Structure
+
+### `ReportData` Interface
+
+**Location:** `src/lib/pdf/types.ts:46`
+
+```typescript:src/lib/pdf/types.ts
+export interface ReportData {
+  reportType: 'executive' | 'standard' | 'custom';
+  clientName: string;
+  clientDomain: string;
+  
+  reportPeriod: {
+    startDate: string;
+    endDate: string;
+  };
+  
+  branding: {
+    companyName: string;
+    website: string;
+    email: string;
+    phone?: string;
+    logo?: string;
+    primaryColor?: string;
+    whiteLabelEnabled?: boolean;
+  };
+  
+  // Google Search Console data
+  gscMetrics: GSCMetrics;
+  
+  // Google Analytics 4 data
+  ga4Metrics: GA4Metrics;
+  
+  // PageSpeed Insights data (optional)
+  pageSpeedData?: PageSpeedMetrics | null;
+  
+  // AI-generated insights
+  aiInsights?: AIInsight[];
+  
+  // Strategic recommendations
+  recommendations?: Array<{
+    title: string;
+    description: string;
+    priority?: 'high' | 'medium' | 'low';
+  }>;
+}
+```
+
+### Google Search Console Metrics
+
+```typescript:src/lib/pdf/types.ts
+export interface GSCMetrics {
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+  topKeywords?: GSCKeyword[];
+  topPages?: GSCPage[];
+  topCountries?: GSCCountry[];
+  deviceBreakdown?: GSCDevice[];
+}
+
+export interface GSCKeyword {
+  query: string;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+}
+```
+
+### Google Analytics 4 Metrics
+
+```typescript:src/lib/pdf/types.ts
+export interface GA4Metrics {
+  // Core metrics (all report types)
+  users: number;
+  sessions: number;
+  bounceRate: number;
+  conversions: number;
+  
+  // Extended metrics (standard reports)
+  avgSessionDuration?: number;
+  pagesPerSession?: number;
+  newUsers?: number;
+  organicTraffic?: number;
+  
+  topLandingPages?: Array<{
+    page: string;
+    sessions: number;
+    users: number;
+    bounceRate: number;
+  }>;
+  
+  deviceBreakdown?: {
+    desktop: number;
+    mobile: number;
+    tablet: number;
+  };
+}
+```
+
+## React-PDF Components
+
+### Document Structure
+
+**Location:** `src/lib/pdf/components/ReportDocument.tsx`
+
+```typescript
+import { Document, Page } from '@react-pdf/renderer';
+
+export const ReportDocument = ({ data }: { data: ReportData }) => (
+  <Document>
+    {/* Cover Page */}
+    <CoverPage data={data} />
+    
+    {/* Executive Summary */}
+    <ExecutiveSummary data={data} />
+    
+    {/* Search Console Metrics */}
+    <GSCMetricsPage data={data} />
+    
+    {/* Top Queries Table */}
+    <TopQueriesPage keywords={data.gscMetrics.topKeywords} />
+    
+    {/* Analytics Pages (varies by report type) */}
+    {data.reportType === 'executive' && <ExecutiveGA4Page data={data} />}
+    {data.reportType === 'standard' && <StandardGA4Pages data={data} />}
+    {data.reportType === 'custom' && <CustomGA4Pages data={data} />}
+    
+    {/* PageSpeed Insights (if available) */}
+    {data.pageSpeedData && <PageSpeedInsightsPage data={data.pageSpeedData} />}
+    
+    {/* AI Insights */}
+    {data.aiInsights && <KeyInsightsPage insights={data.aiInsights} />}
+    
+    {/* Strategic Recommendations */}
+    {data.recommendations && <StrategicRecommendationsPage recommendations={data.recommendations} />}
+  </Document>
+);
+```
+
+### Cover Page Component
+
+**Location:** `src/lib/pdf/components/CoverPage.tsx`
+
+```typescript
+import { Page, View, Text, Image } from '@react-pdf/renderer';
+
+export const CoverPage = ({ data }: { data: ReportData }) => (
+  <Page size="A4" style={styles.coverPage}>
+    <View style={styles.coverContent}>
+      {/* Agency Logo */}
+      {data.branding.logo && (
+        <Image src={data.branding.logo} style={styles.logo} />
+      )}
+      
+      {/* Report Title */}
+      <Text style={styles.reportTitle}>
+        SEO Performance Report
+      </Text>
+      
+      {/* Client Name */}
+      <Text style={styles.clientName}>
+        {data.clientName}
+      </Text>
+      
+      {/* Date Range */}
+      <Text style={styles.dateRange}>
+        {formatDate(data.reportPeriod.startDate)} - {formatDate(data.reportPeriod.endDate)}
+      </Text>
+      
+      {/* Agency Info */}
+      <View style={styles.agencyInfo}>
+        <Text style={styles.agencyName}>{data.branding.companyName}</Text>
+        <Text style={styles.agencyWebsite}>{data.branding.website}</Text>
+      </View>
+    </View>
+  </Page>
+);
+```
+
+### Metrics Display Components
+
+**Location:** `src/lib/pdf/components/GSCMetricsPage.tsx`
+
+```typescript
+export const GSCMetricsPage = ({ data }: { data: ReportData }) => (
+  <Page size="A4" style={styles.page}>
+    <View style={styles.header}>
+      <Text style={styles.pageTitle}>Search Console Performance</Text>
+    </View>
+    
+    {/* Metrics Grid */}
+    <View style={styles.metricsGrid}>
+      <MetricCard
+        label="Total Clicks"
+        value={formatNumber(data.gscMetrics.clicks)}
+        icon="clicks"
+      />
+      <MetricCard
+        label="Impressions"
+        value={formatNumber(data.gscMetrics.impressions)}
+        icon="impressions"
+      />
+      <MetricCard
+        label="Avg. Position"
+        value={data.gscMetrics.position.toFixed(1)}
+        icon="position"
+      />
+      <MetricCard
+        label="CTR"
+        value={`${(data.gscMetrics.ctr * 100).toFixed(2)}%`}
+        icon="ctr"
+      />
+    </View>
+    
+    {/* Device Breakdown */}
+    {data.gscMetrics.deviceBreakdown && (
+      <DeviceBreakdownChart data={data.gscMetrics.deviceBreakdown} />
+    )}
+  </Page>
+);
+```
+
+## Styling System
+
+### Style Constants
+
+**Location:** `src/lib/pdf/components/styles.ts`
+
+```typescript
+import { StyleSheet } from '@react-pdf/renderer';
+
+export const colors = {
+  primary: '#7e23ce',
+  secondary: '#22d3ee',
+  text: '#1e293b',
+  textLight: '#64748b',
+  border: '#e2e8f0',
+  background: '#ffffff',
+  backgroundLight: '#f8fafc',
+};
+
+export const fonts = {
+  heading: 'Helvetica-Bold',
+  body: 'Helvetica',
+  mono: 'Courier',
+};
+
+export const styles = StyleSheet.create({
+  page: {
+    padding: 40,
+    fontFamily: fonts.body,
+    fontSize: 10,
+    color: colors.text,
+  },
+  
+  coverPage: {
+    padding: 0,
+    backgroundColor: colors.primary,
+    color: '#ffffff',
+  },
+  
+  pageTitle: {
+    fontSize: 24,
+    fontFamily: fonts.heading,
+    marginBottom: 20,
+    color: colors.primary,
+  },
+  
+  metricsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+    marginVertical: 20,
+  },
+  
+  metricCard: {
+    width: '48%',
+    padding: 16,
+    backgroundColor: colors.backgroundLight,
+    borderRadius: 8,
+    borderLeft: `4px solid ${colors.primary}`,
+  },
+});
+```
+
+### White-Label Branding
+
+**Dynamic Color Application:**
+
+```typescript
+// Use client's primary color if white-label enabled
+const primaryColor = data.branding.whiteLabelEnabled 
+  ? data.branding.primaryColor 
+  : colors.primary;
+
+const dynamicStyles = StyleSheet.create({
+  brandedElement: {
+    backgroundColor: primaryColor,
+    borderColor: primaryColor,
+  },
+});
+```
+
+## Template Utilities
+
+### Helper Functions
+
+**Location:** `src/lib/pdf/template-utils.ts`
+
+#### Number Formatting
+
+```typescript:src/lib/pdf/template-utils.ts
+function formatNumber(num: number): string {
+  if (num >= 1000000) {
+    return (num / 1000000).toFixed(1) + 'M';
+  }
+  if (num >= 1000) {
+    return (num / 1000).toFixed(1) + 'K';
+  }
+  return num.toLocaleString('en-US');
+}
+
+// Examples:
+formatNumber(1234567); // "1.2M"
+formatNumber(45678);   // "45.7K"
+formatNumber(987);     // "987"
+```
+
+#### Percentage Formatting
+
+```typescript:src/lib/pdf/template-utils.ts
+function formatPercentage(decimal: number): string {
+  const percentage = typeof decimal === 'number' ? decimal * 100 : 0;
+  return `${percentage.toFixed(1)}%`;
+}
+
+// Examples:
+formatPercentage(0.0432); // "4.3%"
+formatPercentage(0.872);  // "87.2%"
+```
+
+#### Date Formatting
+
+```typescript:src/lib/pdf/template-utils.ts
+function formatDate(date: Date | string): string {
+  return new Date(date).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+}
+
+// Example:
+formatDate('2024-03-04'); // "March 4, 2024"
+```
+
+#### HTML Escaping
+
+```typescript:src/lib/pdf/template-utils.ts
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+```
+
+## Integration Points
+
+### API Route Integration
+
+**Example:** `src/app/api/reports/generate/route.ts` (planned)
+
+```typescript
+import { pdfGenerator } from '@/lib/pdf/react-pdf-generator';
+import { put } from '@vercel/blob';
+
+export async function POST(req: Request) {
+  const reportData = await req.json();
+  
+  // Generate PDF
+  const result = await pdfGenerator.generateReport(reportData);
+  
+  if (!result.success) {
+    return new Response(JSON.stringify({ error: result.error }), {
+      status: 500,
+    });
+  }
+  
+  // Upload to Vercel Blob
+  const filename = `report-${reportData.clientName}-${Date.now()}.pdf`;
+  const blob = await put(filename, result.pdfBuffer!, {
+    access: 'public',
+  });
+  
+  // Save to database
+  await prisma.report.create({
+    data: {
+      userId: reportData.userId,
+      clientId: reportData.clientId,
+      pdfUrl: blob.url,
+      processingTime: result.processingTime,
+      status: 'COMPLETED',
+    },
+  });
+  
+  return new Response(JSON.stringify({ url: blob.url }), {
+    status: 200,
+  });
+}
+```
+
+### Queue System Integration
+
+**Background Job:** Process reports asynchronously
+
+```typescript
+import { Queue } from '@/lib/queue';
+
+interface ReportJob {
+  reportId: string;
+  clientId: string;
+  userId: string;
+  dateRange: { start: string; end: string };
+}
+
+queue.process<ReportJob>('generate-report', async (job) => {
+  const { reportId, clientId } = job.data;
+  
+  // Fetch data from Google APIs
+  const reportData = await fetchReportData(clientId);
+  
+  // Generate PDF
+  const result = await pdfGenerator.generateReport(reportData);
+  
+  if (!result.success) {
+    throw new Error(result.error);
+  }
+  
+  // Upload and save
+  const pdfUrl = await uploadToBlob(result.pdfBuffer!);
+  await updateReportStatus(reportId, 'COMPLETED', pdfUrl);
+});
+```
+
+## Performance Optimization
+
+### Generation Time
+
+**Target:** < 30 seconds per report
+
+**Typical Breakdown:**
+- Data validation: < 100ms
+- Component loading: < 200ms
+- PDF rendering: 10-25 seconds
+- Total: ~15-30 seconds
+
+### Memory Management
+
+**Buffer Handling:**
+
+```typescript
+// Stream buffer to storage immediately
+const buffer = result.pdfBuffer;
+const stream = Readable.from(buffer);
+
+await uploadStream(stream);
+
+// Clear buffer reference
+buffer = null;
+```
+
+### Compression
+
+**Configuration:** `src/lib/pdf/react-pdf-generator.ts:19`
+
+```typescript
+compressionLevel: 6  // 0 = no compression, 9 = maximum
+```
+
+**Trade-offs:**
+- Level 0: Fastest, largest files (~5MB)
+- Level 6: Balanced (~2MB)
+- Level 9: Slowest, smallest files (~1.5MB)
+
+## Error Handling
+
+### Error Types
+
+```typescript:src/lib/pdf/types.ts
+export interface ReactPDFError extends Error {
+  stage: 'initialization' | 'rendering' | 'buffer_generation' | 'cleanup';
+  duration: number;
+  originalError?: Error;
+}
+```
+
+### Error Creation
+
+**Location:** `src/lib/pdf/react-pdf-generator.ts:183`
+
+```typescript:src/lib/pdf/react-pdf-generator.ts
+private createPDFError(
+  error: unknown,
+  stage: ReactPDFError['stage'],
+  duration: number
+): ReactPDFError {
+  const message = error instanceof Error ? error.message : 'Unknown error';
+  const originalError = error instanceof Error ? error : new Error(String(error));
+  
+  const pdfError = new Error(
+    `PDF generation failed at ${stage}: ${message}`
+  ) as ReactPDFError;
+  
+  pdfError.stage = stage;
+  pdfError.duration = duration;
+  pdfError.originalError = originalError;
+  
+  return pdfError;
+}
+```
+
+### Diagnostic Logging
+
+**Location:** Throughout `src/lib/pdf/react-pdf-generator.ts`
+
+```typescript:src/lib/pdf/react-pdf-generator.ts
+console.log('🟣 PDF GENERATOR: Starting generation');
+console.log('Data received:', JSON.stringify(data, null, 2));
+console.log('Validation checks:');
+console.log('  - Has clientName:', !!data.clientName);
+console.log('  - Has branding:', !!data.branding);
+```
+
+## Testing
+
+### Unit Tests
+
+```typescript
+import { pdfGenerator } from '@/lib/pdf/react-pdf-generator';
+
+describe('ReactPDFGenerator', () => {
+  it('generates PDF successfully with valid data', async () => {
+    const result = await pdfGenerator.generateReport(validReportData);
+    
+    expect(result.success).toBe(true);
+    expect(result.pdfBuffer).toBeInstanceOf(Buffer);
+    expect(result.processingTime).toBeGreaterThan(0);
+  });
+  
+  it('rejects invalid date ranges', async () => {
+    const invalidData = {
+      ...validReportData,
+      reportPeriod: { startDate: '2024-03-01', endDate: '2024-02-01' }
+    };
+    
+    const result = await pdfGenerator.generateReport(invalidData);
+    
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Start date must be before end date');
+  });
+});
+```
+
+## Best Practices
+
+### Component Design
+
+1. **Keep Components Small** - Break complex pages into smaller components
+2. **Reuse Styles** - Define styles once in `styles.ts`
+3. **Type Everything** - Use TypeScript interfaces for all props
+4. **Handle Missing Data** - Always provide fallbacks for optional data
+
+### Performance
+
+1. **Lazy Load Images** - Load images only when needed
+2. **Optimize Assets** - Compress logos and images before embedding
+3. **Minimize Re-renders** - Use React.memo for expensive components
+4. **Stream Output** - Don't hold buffers in memory longer than necessary
+
+### Debugging
+
+1. **Enable Debug Mode** - Set `debug: true` in development
+2. **Log Data Structure** - Console.log report data before generation
+3. **Test Incrementally** - Generate pages one at a time during development
+4. **Use PDF Viewers** - Preview output in multiple PDF readers

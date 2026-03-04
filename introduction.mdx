@@ -1,0 +1,183 @@
+---
+title: Introduction
+description: Welcome to Reportr - AI-powered white-label SEO reporting for digital marketing agencies
+---
+
+# Welcome to Reportr
+
+Reportr is a white-label SEO reporting platform designed specifically for digital marketing agencies. Generate professional, branded PDF reports automatically by collecting data from Google Search Console, Google Analytics 4, and PageSpeed Insights APIs.
+
+<Note>
+  Reportr uses Claude AI to generate intelligent insights from your SEO data, helping you deliver value-packed reports to your clients.
+</Note>
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="White-Label Branding" icon="palette">
+    Customize colors, logos, and company names to match your agency's brand identity.
+  </Card>
+  
+  <Card title="Automated Data Collection" icon="database">
+    Automatically fetch data from Google Search Console, Analytics 4, and PageSpeed Insights.
+  </Card>
+  
+  <Card title="AI-Powered Insights" icon="sparkles">
+    Claude API analyzes your data and generates actionable SEO recommendations.
+  </Card>
+  
+  <Card title="Professional PDF Reports" icon="file-pdf">
+    Generate branded reports in seconds with React-PDF technology.
+  </Card>
+</CardGroup>
+
+## Platform Overview
+
+Reportr is built on a modern tech stack optimized for performance and reliability:
+
+- **Framework**: Next.js 14 with App Router
+- **Language**: TypeScript with strict mode enabled
+- **Database**: PostgreSQL with Prisma ORM
+- **Authentication**: NextAuth.js with Google OAuth
+- **AI**: Anthropic Claude API for insight generation
+- **PDF Generation**: React-PDF for branded reports
+- **Storage**: Vercel Blob for PDF files
+
+## Plans & Pricing
+
+Reportr offers flexible plans to match your agency's needs:
+
+<AccordionGroup>
+  <Accordion title="Free Plan">
+    Perfect for testing the platform:
+    - **1 client**
+    - **5 reports per month**
+    - Google Search Console & Analytics integration
+    - Basic PDF reports
+    - No white-label branding
+  </Accordion>
+  
+  <Accordion title="Starter Plan">
+    Ideal for small agencies:
+    - **5 clients**
+    - **25 reports per month**
+    - All Free features
+    - Optional white-label add-on ($20/mo)
+    - Priority support
+  </Accordion>
+  
+  <Accordion title="Professional Plan">
+    For growing agencies:
+    - **15 clients**
+    - **75 reports per month**
+    - **White-label branding included**
+    - Custom metrics support
+    - Advanced analytics
+    - Priority support
+  </Accordion>
+  
+  <Accordion title="Agency Plan">
+    For established agencies:
+    - **50 clients**
+    - **250 reports per month**
+    - **White-label branding included**
+    - All Professional features
+    - Dedicated support
+    - Custom integrations
+  </Accordion>
+</AccordionGroup>
+
+## Data Sources
+
+Reportr integrates with the most important SEO and analytics platforms:
+
+### Google Search Console
+
+Collects organic search performance data:
+- Total clicks and impressions
+- Average CTR and position
+- Top performing queries (up to 25)
+- Top performing pages (up to 25)
+- Daily time-series data for trend analysis
+
+### Google Analytics 4
+
+Tracks website engagement and conversions:
+- Users, sessions, and bounce rate
+- Engagement rate and session duration
+- Conversions and e-commerce data
+- Traffic source breakdown (organic, direct, referral, social, paid)
+- Top landing pages for organic traffic
+- Device breakdown (desktop, mobile, tablet)
+- Daily traffic trends
+
+### Custom Metrics (Professional & Agency)
+
+Define your own custom GA4 metrics:
+- Map any GA4 event to your reports
+- Configure display names and formatting
+- Track custom conversion events
+- Build reports tailored to your clients' KPIs
+
+## Architecture Highlights
+
+<Steps>
+  <Step title="User Authentication">
+    Sign in with Google OAuth via NextAuth.js. Refresh tokens are securely stored for API access.
+  </Step>
+  
+  <Step title="Client Management">
+    Add clients and connect their Google accounts (Search Console + Analytics 4).
+  </Step>
+  
+  <Step title="Data Collection">
+    Trigger report generation → background job fetches data from Google APIs in parallel.
+  </Step>
+  
+  <Step title="AI Insights">
+    Claude API analyzes the collected data and generates intelligent recommendations.
+  </Step>
+  
+  <Step title="PDF Generation">
+    React-PDF creates a branded PDF with your logo, colors, and company name.
+  </Step>
+  
+  <Step title="Storage & Delivery">
+    PDF is uploaded to Vercel Blob storage and made available for download.
+  </Step>
+</Steps>
+
+## Performance Targets
+
+Reportr is optimized for speed:
+
+- **Report generation**: < 3 minutes end-to-end
+- **API responses**: < 2 seconds
+- **PDF creation**: < 30 seconds
+- **UI interactions**: < 500ms
+
+## Database Schema
+
+The application uses a comprehensive Prisma schema with key models:
+
+- **User** - Agency owners with white-label branding settings (companyName, primaryColor, logo)
+- **Client** - Client websites with Google API connection tracking
+- **Report** - Generated reports with processing metadata, data, and PDF URLs
+- **Payment** - PayPal subscription and payment records
+- **ApiUsage** - API usage tracking for billing
+
+## What's Next?
+
+<CardGroup cols={2}>
+  <Card title="Quickstart Guide" icon="rocket" href="/quickstart">
+    Get up and running in minutes
+  </Card>
+  
+  <Card title="Authentication" icon="key" href="/authentication">
+    Learn how authentication works
+  </Card>
+</CardGroup>
+
+<Info>
+  **Need help?** Reportr is actively developed and improving every day. Current status: 35% complete with foundation built and core business logic in development.
+</Info>

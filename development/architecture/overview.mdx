@@ -1,0 +1,265 @@
+---
+title: Architecture Overview
+description: Comprehensive overview of Reportr's technical architecture, design patterns, and technology stack
+---
+
+## Project Overview
+
+Reportr is a white-label SEO reporting SaaS platform built for digital marketing agencies. The platform automates the collection of data from Google Search Console, Google Analytics 4, and PageSpeed Insights APIs, generates AI-powered insights using Claude API, and produces branded PDF reports.
+
+**Current Development Status**: 35% complete - foundation is built, core business logic implementation in progress.
+
+## Technology Stack
+
+### Core Framework
+- **Next.js 14** - React framework with App Router for server and client rendering
+- **TypeScript** - Strict mode enabled with comprehensive type checking
+- **React 18** - Latest React features including Server Components
+
+### Database & ORM
+- **PostgreSQL** - Primary relational database
+- **Prisma ORM** - Type-safe database client with schema migrations
+- **Connection Pooling** - Managed via Prisma with direct URL support
+
+### Authentication & Authorization
+- **NextAuth.js** - Authentication framework with Google OAuth
+- **JWT Strategy** - Token-based session management
+- **Google OAuth** - Primary authentication provider with API token storage
+
+### Styling & UI
+- **Tailwind CSS** - Utility-first CSS framework
+- **Atomic Design System** - Component architecture (atoms → organisms → templates)
+- **CSS Custom Properties** - Dynamic theming for white-label branding
+- **Lucide React** - Icon library
+
+### AI & Processing
+- **Anthropic Claude API** - AI-powered report insights generation
+- **React-PDF** - PDF generation and rendering
+- **Vercel Blob** - Cloud storage for generated PDF files
+- **Upstash Redis** - Background job queue for report processing
+
+### API Integrations
+- **Google Search Console API** - SEO performance metrics
+- **Google Analytics 4 API** - Website analytics data
+- **PageSpeed Insights API** - Performance metrics
+- **PayPal API** - Subscription billing integration
+
+### Development Tools
+- **ESLint** - Code linting with TypeScript rules
+- **Prettier** - Code formatting with Tailwind plugin
+- **Zod** - Runtime schema validation
+- **Git** - Version control
+
+## Architecture Principles
+
+### 1. Strict TypeScript
+All code uses TypeScript strict mode with:
+- `noImplicitAny: true`
+- `strictNullChecks: true`
+- `noUncheckedIndexedAccess: true`
+- Target: ES2020 with DOM libraries
+
+### 2. Atomic Design Pattern
+Components are organized hierarchically:
+- **Atoms** - Basic UI elements (Button, Input, Typography)
+- **Molecules** - Simple combinations (MetricCard, UserMenu)
+- **Organisms** - Complex components (DashboardSidebar, ClientTable)
+- **Templates** - Page layouts (DashboardLayout)
+- **Pages** - Complete application pages
+
+### 3. API-First Design
+Next.js API routes provide RESTful endpoints with:
+- Zod schema validation
+- Authentication middleware
+- Error handling with proper HTTP status codes
+- Resource-based routing structure
+
+### 4. White-Label Architecture
+Supports multi-tenant branding through:
+- CSS custom properties for dynamic theming
+- User-specific branding settings (colors, logos, company names)
+- PDF template customization per user
+- Domain-agnostic design system
+
+## Project Structure
+
+```
+src/
+├── app/                     # Next.js App Router
+│   ├── (auth)/             # Authentication route group
+│   ├── (dashboard)/        # Protected dashboard routes
+│   ├── api/                # API routes (see api-structure.mdx)
+│   ├── globals.css         # Global styles and CSS variables
+│   ├── layout.tsx          # Root layout with providers
+│   └── page.tsx            # Landing page
+├── components/             # Atomic design components
+│   ├── atoms/             # Basic elements
+│   ├── molecules/         # Simple combinations
+│   ├── organisms/         # Complex components
+│   ├── templates/         # Page layouts
+│   ├── pages/             # Complete page components
+│   ├── landing/           # Landing page sections
+│   ├── blog/              # Blog components
+│   ├── pdf/               # PDF-specific components
+│   └── providers/         # React context providers
+├── lib/                   # Business logic & utilities
+│   ├── google/            # Google API integrations
+│   ├── reports/           # Report processing pipeline
+│   ├── ai/                # Claude API integration
+│   ├── pdf/               # PDF generation system
+│   ├── queue/             # Background job processing
+│   ├── auth.ts            # NextAuth configuration
+│   ├── prisma.ts          # Prisma client instance
+│   ├── utils.ts           # Utility functions
+│   └── validations.ts     # Zod schemas
+├── hooks/                 # Custom React hooks
+├── types/                 # TypeScript type definitions
+└── styles/                # Additional styles
+```
+
+## Core Business Logic
+
+### Authentication Flow
+1. User clicks "Sign in with Google"
+2. NextAuth.js initiates OAuth flow
+3. Google returns access/refresh tokens
+4. Tokens stored in JWT session for API access
+5. User record created/updated in database
+6. Session maintained via JWT strategy
+
+### Report Generation Pipeline (Planned)
+1. User triggers report generation
+2. Job queued in Redis with client/date parameters
+3. Worker fetches data from Google APIs in parallel:
+   - Search Console metrics
+   - Analytics 4 data
+   - PageSpeed Insights
+4. Data processed and cross-referenced
+5. Claude API generates insights from data
+6. React-PDF creates branded PDF with user's branding
+7. PDF uploaded to Vercel Blob storage
+8. Database updated with report metadata and PDF URL
+9. User notified of completion
+
+### White-Label Branding System
+Users customize their agency branding:
+- **Company Name** - Defaults to "{firstName}'s Agency"
+- **Primary Color** - Hex color (default: #8B5CF6)
+- **Logo Upload** - Stored in Vercel Blob
+- **PDF Templates** - Dynamically branded with user settings
+- **CSS Variables** - Updated per user session
+
+## Performance Targets
+
+- **Report Generation** - < 3 minutes end-to-end
+- **API Responses** - < 2 seconds
+- **PDF Creation** - < 30 seconds
+- **UI Interactions** - < 500ms
+- **Database Queries** - Optimized with indexes and eager loading
+
+## Path Aliases
+
+Configured in `tsconfig.json` for cleaner imports:
+
+```typescript
+"@/*": ["./src/*"]
+"@/components/*": ["./src/components/*"]
+"@/lib/*": ["./src/lib/*"]
+"@/types/*": ["./src/types/*"]
+"@/hooks/*": ["./src/hooks/*"]
+```
+
+Usage example:
+```typescript
+import { Button } from '@/components/atoms'
+import { prisma } from '@/lib/prisma'
+import type { User } from '@/types'
+```
+
+## Environment Configuration
+
+Required environment variables:
+
+```bash
+# Database
+DATABASE_URL="postgresql://..."
+PRISMA_DATABASE_URL="postgresql://..." # For connection pooling
+
+# Authentication
+NEXTAUTH_SECRET="random-secret-key"
+NEXTAUTH_URL="http://localhost:3000"
+
+# Google OAuth & APIs
+GOOGLE_CLIENT_ID="..."
+GOOGLE_CLIENT_SECRET="..."
+PAGESPEED_API_KEY="..."
+
+# AI & Processing
+ANTHROPIC_API_KEY="..."
+
+# Storage & Queue
+BLOB_READ_WRITE_TOKEN="..." # Vercel Blob
+UPSTASH_REDIS_REST_URL="..."
+UPSTASH_REDIS_REST_TOKEN="..."
+
+# Payments
+PAYPAL_CLIENT_ID="..."
+PAYPAL_CLIENT_SECRET="..."
+```
+
+## Security Considerations
+
+### Data Protection
+- All API tokens encrypted before database storage
+- Google refresh tokens stored securely per client
+- JWT tokens for session management
+- CSRF protection via NextAuth.js
+
+### Rate Limiting
+- Google API rate limits handled with retry logic
+- Exponential backoff for failed requests
+- API usage tracked in `ApiUsage` model
+
+### Authentication
+- Protected routes require valid session
+- API endpoints validate user ownership of resources
+- Email verification required for core features
+- Plan-based feature access control
+
+## Development Workflow
+
+### Setup
+```bash
+npm install
+cp .env.example .env
+# Configure environment variables
+npm run db:migrate
+npm run db:seed
+```
+
+### Development
+```bash
+npm run dev              # Start dev server
+npm run db:studio        # Open Prisma Studio
+npm run lint             # Run ESLint
+```
+
+### Database Management
+```bash
+npm run db:migrate       # Run migrations
+npm run db:push          # Push schema changes
+npm run db:seed          # Seed sample data
+```
+
+### Production Build
+```bash
+npm run build            # Build for production
+npm run start            # Start production server
+```
+
+## Next Steps
+
+See related architecture documentation:
+- [Database Schema](/development/architecture/database-schema) - Detailed Prisma models
+- [Atomic Design System](/development/architecture/atomic-design) - Component hierarchy
+- [API Structure](/development/architecture/api-structure) - API route organization

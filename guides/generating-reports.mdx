@@ -1,0 +1,383 @@
+---
+title: 'Generating Reports'
+description: 'Create comprehensive AI-powered SEO reports with Google Search Console, Analytics 4, and PageSpeed data'
+---
+
+## Overview
+
+Reportr generates professional PDF reports combining:
+- **Google Search Console data** - Clicks, impressions, CTR, position, top queries
+- **Google Analytics 4 data** - Users, sessions, bounce rate, conversions
+- **PageSpeed Insights** - Core Web Vitals and performance scores
+- **AI-generated insights** - Claude AI analyzes your data and provides actionable recommendations
+
+Reports are customized with your agency's branding and can be shared with clients.
+
+## Prerequisites
+
+- [Google APIs configured](/guides/google-apis-setup)
+- [Client connected with Google account](/guides/connecting-clients)
+- Search Console and Analytics properties selected
+- Active subscription with available report quota
+
+<Note>
+  **Report Limits by Plan:**
+  - Free: 5 reports per month
+  - Starter: 25 reports per month
+  - Professional: 75 reports per month
+  - Agency: 250 reports per month
+  
+  See `/workspace/source/src/lib/plan-limits.ts:15-43` for current limits.
+</Note>
+
+## Quick Start
+
+<Steps>
+  <Step title="Select a client">
+    Navigate to **Dashboard** → **Clients** and choose the client you want to report on.
+  </Step>
+
+  <Step title="Click Generate Report">
+    Click the **Generate Report** button on the client card.
+  </Step>
+
+  <Step title="Choose date range">
+    Select the reporting period:
+    - Last 7 days
+    - Last 30 days
+    - Last 90 days
+    - Custom date range
+  </Step>
+
+  <Step title="Wait for processing">
+    Report generation takes 1-3 minutes. You'll see:
+    1. **Fetching data** - Pulling from Google APIs
+    2. **Generating insights** - AI analysis via Claude API
+    3. **Creating PDF** - Building branded report
+    4. **Completed** - Report ready to download
+  </Step>
+</Steps>
+
+## Understanding the Report Generation Process
+
+### Behind the Scenes
+
+When you generate a report, Reportr:
+
+1. **Validates quota** (see `/workspace/source/src/app/api/reports/route.ts:119-139`):
+   - Checks your current billing cycle usage
+   - Ensures you haven't exceeded your plan's monthly limit
+   - Returns error if quota exceeded
+
+2. **Fetches Google Search Console data**:
+   - API endpoint: `/api/clients/[id]/google/search-console`
+   - Retrieves: clicks, impressions, CTR, average position
+   - Includes top queries with performance metrics
+   - See implementation in `/workspace/source/src/app/api/clients/[id]/google/search-console/route.ts`
+
+3. **Fetches Google Analytics 4 data**:
+   - API endpoint: `/api/clients/[id]/google/analytics`
+   - Retrieves: users, sessions, bounce rate, conversions
+   - Supports custom metrics if configured
+   - See implementation in `/workspace/source/src/app/api/clients/[id]/google/analytics/route.ts`
+
+4. **Fetches PageSpeed Insights** (optional):
+   - API endpoint: `/api/clients/[id]/pagespeed`
+   - Retrieves Core Web Vitals: LCP, FID, CLS
+   - Performance scores for mobile and desktop
+
+5. **Generates AI insights**:
+   - Sends data to Claude API (Anthropic)
+   - AI analyzes trends, anomalies, and opportunities
+   - Returns actionable recommendations
+   - Tracks token usage and cost (stored in report record)
+
+6. **Creates branded PDF**:
+   - Uses React-PDF for generation
+   - Applies your agency's branding (if white-label enabled)
+   - Includes charts, tables, and AI insights
+   - Uploads to Vercel Blob storage
+
+7. **Updates database**:
+   - Stores report metadata and PDF URL
+   - Increments client's `totalReportsGenerated` counter
+   - Updates `lastReportGenerated` timestamp
+   - Tracks generation time for performance monitoring
+
+## Report Quota Management
+
+### Checking Your Usage
+
+View your current usage on the Dashboard:
+
+```
+Reports: 12 / 25 used this cycle
+Resets in: 18 days
+```
+
+<Tip>
+  Reportr uses a **30-day rolling billing cycle** starting from when you subscribed, not calendar months. See `/workspace/source/src/lib/billing-cycle.ts` for cycle management.
+</Tip>
+
+### What Happens When You Hit the Limit?
+
+If you try to generate a report when at quota:
+
+1. **Error response** is returned with:
+   ```json
+   {
+     "error": "You've reached your limit of 25 reports per month on the Starter plan",
+     "currentCount": 25,
+     "limit": 25,
+     "upgradeRequired": true,
+     "billingCycle": {
+       "start": "2026-02-04",
+       "end": "2026-03-06",
+       "daysRemaining": 18
+     }
+   }
+   ```
+
+2. **Upgrade modal** appears with options to:
+   - Upgrade to next plan tier
+   - Wait until your cycle resets
+
+3. **No report is created** - you won't be charged for failed attempts
+
+See the limit check in `/workspace/source/src/app/api/reports/route.ts:119-139`
+
+## Report Data Structure
+
+### Search Console Metrics
+
+From `/workspace/source/src/app/api/clients/[id]/google/search-console/route.ts`, reports include:
+
+```json
+{
+  "gscData": {
+    "clicks": 1250,
+    "impressions": 45000,
+    "ctr": 2.78,
+    "position": 12.5,
+    "topQueries": [
+      {
+        "query": "seo services",
+        "clicks": 340,
+        "impressions": 8900,
+        "ctr": 3.82,
+        "position": 8.2
+      }
+    ]
+  }
+}
+```
+
+### Analytics 4 Metrics
+
+From `/workspace/source/src/app/api/clients/[id]/google/analytics/route.ts`, reports include:
+
+```json
+{
+  "ga4Data": {
+    "users": 3450,
+    "sessions": 5230,
+    "bounceRate": 42.3,
+    "conversions": 89
+  }
+}
+```
+
+<Note>
+  You can configure **custom metrics** for GA4 by editing the client's settings. Custom metrics are stored in the `customMetrics` JSON field.
+</Note>
+
+### AI Insights Structure
+
+Reports can include AI-generated insights (stored in the `aiInsights` JSON field):
+
+```json
+{
+  "aiInsights": [
+    {
+      "type": "opportunity",
+      "title": "High-impression, low-click queries",
+      "description": "5 queries have high impressions but CTR below 2%...",
+      "priority": "high",
+      "actionItems": [
+        "Optimize meta descriptions for...",
+        "Consider creating dedicated landing pages..."
+      ]
+    }
+  ],
+  "aiInsightsSource": "ai",
+  "aiTokensUsed": 1250,
+  "aiCostUsd": 0.0125
+}
+```
+
+## Advanced Features
+
+### Custom Date Ranges
+
+When using custom date ranges:
+
+1. Select **Custom** from the date picker
+2. Choose start and end dates
+3. Restrictions:
+   - Maximum range: 90 days
+   - Cannot select future dates
+   - End date must be after start date
+
+### Comparing Reports
+
+To track progress over time:
+
+1. Generate monthly reports on the same day each month
+2. Use the **Reports History** page to view past reports
+3. Download multiple reports to compare metrics manually
+
+<Tip>
+  Future enhancement: Side-by-side report comparison is planned.
+</Tip>
+
+### Re-generating Reports
+
+If a report fails or you want fresh data:
+
+1. Failed reports show a **Retry** button
+2. Retrying counts as a new report against your quota
+3. Successful reports cannot be regenerated (to prevent quota abuse)
+4. Instead, generate a new report with the same date range
+
+## Performance and Timeouts
+
+Report generation performance:
+
+- **Target**: < 3 minutes end-to-end
+- **Typical**: 1-2 minutes for standard reports
+- **Factors affecting speed**:
+  - Amount of Search Console data (more queries = slower)
+  - Claude API response time (usually 5-15 seconds)
+  - PDF complexity (charts, images)
+
+If generation takes longer than 5 minutes:
+1. Check your internet connection
+2. Verify Google API quotas aren't exceeded
+3. Check Reportr status page for service issues
+4. Contact support if issue persists
+
+## Troubleshooting
+
+### "Email verification required"
+
+**Problem:** Cannot generate reports despite having quota
+
+**Solution:**
+- Free plan users must verify their email address first
+- Check your inbox for verification email
+- Paid subscribers bypass this check
+- See `/workspace/source/src/app/api/reports/route.ts:96-106`
+
+### "Google account not connected"
+
+**Problem:** Report generation fails immediately
+
+**Solution:**
+1. Go to client settings
+2. Verify Google account shows as connected
+3. If not, click **Connect Google Account** and re-authorize
+4. Ensure Search Console and Analytics properties are selected
+5. Retry report generation
+
+See the connection check in `/workspace/source/src/app/api/clients/[id]/google/search-console/route.ts:58-64`
+
+### Missing Data in Reports
+
+**Problem:** Report shows zeros or missing sections
+
+**Possible causes:**
+
+1. **New website**: If the site was recently added to Search Console/Analytics:
+   - Wait 48-72 hours for data to populate
+   - Try a longer date range
+
+2. **Property mismatch**: 
+   - Verify the selected Search Console property matches the domain
+   - Check Analytics property ID is correct
+   - Ensure domain property includes all subdomains
+
+3. **No traffic**: 
+   - If the site genuinely has no traffic, report will show zeros
+   - This is expected behavior, not an error
+
+4. **API permissions**:
+   - Reconnect Google account to refresh permissions
+   - Ensure account has Owner/Full User access to properties
+
+### "Failed to fetch data" Errors
+
+**Problem:** Report status shows "FAILED" with error message
+
+**Common errors:**
+
+**"Token refresh failed"**
+- Refresh token expired or was revoked
+- Solution: Disconnect and reconnect Google account
+
+**"Rate limit exceeded"**
+- Hit Google API quota limits
+- Solution: Wait 1 minute and retry, or request quota increase
+
+**"Property not found"**
+- Selected property no longer exists or access was removed
+- Solution: Reconfigure client properties
+
+### AI Insights Missing or Fallback Used
+
+**Problem:** Report uses "rule-based" insights instead of AI
+
+**Possible causes:**
+
+1. **Anthropic API key not configured**: Check `.env` file for `ANTHROPIC_API_KEY`
+2. **API quota exceeded**: Check Anthropic dashboard for rate limits
+3. **Network timeout**: Claude API taking too long to respond
+4. **Fallback mode activated**: System automatically uses rule-based insights when AI fails
+
+Check the `aiInsightsSource` field:
+- `"ai"` - AI-generated insights (normal)
+- `"rule-based"` - Fallback template insights
+- `"fallback"` - Error occurred, using generic insights
+
+## Report Database Schema
+
+For reference, here's what's stored for each report (from `/workspace/source/prisma/schema.prisma:110-142`):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | String | Unique report identifier |
+| `title` | String | Report title (e.g., "SEO Report - Jan 2026") |
+| `status` | Enum | PENDING, PROCESSING, COMPLETED, FAILED |
+| `data` | JSON | Full report data (GSC, GA4, PageSpeed) |
+| `pdfUrl` | String? | Vercel Blob URL to PDF file |
+| `pdfSize` | Int? | PDF file size in bytes |
+| `processingStartedAt` | DateTime? | When generation began |
+| `processingCompletedAt` | DateTime? | When generation finished |
+| `errorMessage` | String? | Error details if failed |
+| `generationTimeMs` | Int? | Total generation time |
+| `aiInsights` | JSON? | AI-generated insights array |
+| `aiInsightsSource` | String? | "ai", "rule-based", or "fallback" |
+| `aiTokensUsed` | Int? | Claude API tokens consumed |
+| `aiCostUsd` | Float? | Cost in USD for AI generation |
+| `clientId` | String | Associated client |
+| `userId` | String | Report owner |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Customize Branding" icon="palette" href="/guides/customizing-branding">
+    Add your agency logo and colors to reports
+  </Card>
+  <Card title="Manage Subscription" icon="credit-card" href="/guides/subscription-management">
+    Upgrade your plan for more reports and clients
+  </Card>
+</CardGroup>

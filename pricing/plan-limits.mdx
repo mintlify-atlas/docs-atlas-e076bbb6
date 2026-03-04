@@ -1,0 +1,230 @@
+---
+title: 'Plan Limits'
+description: 'Detailed breakdown of feature limits and restrictions for each Reportr plan tier'
+---
+
+Each Reportr plan tier has specific limits on clients and monthly report generation. Understanding these limits helps you choose the right plan and avoid hitting restrictions.
+
+## Plan Comparison Table
+
+| Feature | Free | Starter | Professional | Agency |
+|---------|------|---------|--------------|--------|
+| **Clients** | 1 | 5 | 15 | 50 |
+| **Reports/Month** | 5 | 25 | 75 | 250 |
+| **White-Label** | ❌ | Optional ($20/mo) | ✅ Included | ✅ Included |
+| **Google Search Console** | ✅ | ✅ | ✅ | ✅ |
+| **Google Analytics 4** | ✅ | ✅ | ✅ | ✅ |
+| **PageSpeed Insights** | ✅ | ✅ | ✅ | ✅ |
+| **AI-Powered Insights** | ✅ | ✅ | ✅ | ✅ |
+| **PDF Generation** | ✅ | ✅ | ✅ | ✅ |
+| **Custom Branding** | Basic | Basic | Advanced | Advanced |
+
+## Client Limits
+
+### What Counts as a Client?
+
+A client is a unique business entity in your Reportr account. Each client:
+- Has a distinct domain name
+- Connects to Google Search Console and Analytics
+- Can generate multiple reports over time
+
+### Client Limit Details
+
+<AccordionGroup>
+  <Accordion title="Free Plan: 1 Client">
+    The Free plan allows you to manage one client, perfect for:
+    - Testing Reportr with your own website
+    - Evaluating features before committing
+    - Single-client consultants
+    
+    **Implementation**: Enforced in `src/lib/plan-limits.ts:18` via `canAddClient()` function
+  </Accordion>
+  
+  <Accordion title="Starter Plan: 5 Clients">
+    Manage up to 5 clients simultaneously, ideal for:
+    - Freelance SEO consultants
+    - Small digital marketing agencies
+    - Boutique marketing firms
+    
+    **Implementation**: Enforced in `src/lib/plan-limits.ts:24` via `canAddClient()` function
+  </Accordion>
+  
+  <Accordion title="Professional Plan: 15 Clients">
+    Handle 15 clients concurrently, suitable for:
+    - Growing agencies with multiple team members
+    - Mid-sized marketing firms
+    - Agencies with diverse client portfolios
+    
+    **Implementation**: Enforced in `src/lib/plan-limits.ts:30` via `canAddClient()` function
+  </Accordion>
+  
+  <Accordion title="Agency Plan: 50 Clients">
+    Support up to 50 clients, designed for:
+    - Large agencies with extensive client bases
+    - Enterprise marketing teams
+    - Agencies offering SEO as core service
+    
+    **Implementation**: Enforced in `src/lib/plan-limits.ts:36` via `canAddClient()` function
+  </Accordion>
+</AccordionGroup>
+
+<Warning>
+  If you reach your client limit, you must either delete an existing client or upgrade your plan before adding new clients.
+</Warning>
+
+## Report Generation Limits
+
+### How Reports are Counted
+
+Reports are counted within your current **30-day billing cycle**. Each generated report consumes one slot from your monthly allocation.
+
+### Monthly Report Limits
+
+<CardGroup cols={2}>
+  <Card title="Free: 5 Reports/Month">
+    Generate up to 5 reports every 30 days
+    
+    - Approximately 1 report per client per cycle
+    - Resets every 30 days from signup
+    - Enforced in `src/lib/plan-limits.ts:19`
+  </Card>
+  
+  <Card title="Starter: 25 Reports/Month">
+    Create up to 25 reports every 30 days
+    
+    - Approximately 5 reports per client
+    - Flexible allocation across clients
+    - Enforced in `src/lib/plan-limits.ts:25`
+  </Card>
+  
+  <Card title="Professional: 75 Reports/Month">
+    Produce up to 75 reports every 30 days
+    
+    - About 5 reports per client on average
+    - Scales with growing client needs
+    - Enforced in `src/lib/plan-limits.ts:31`
+  </Card>
+  
+  <Card title="Agency: 250 Reports/Month">
+    Generate up to 250 reports every 30 days
+    
+    - Approximately 5 reports per client
+    - Enterprise-level capacity
+    - Enforced in `src/lib/plan-limits.ts:37`
+  </Card>
+</CardGroup>
+
+### Report Limit Enforcement
+
+The system checks your usage before allowing report generation:
+
+```typescript
+// From src/lib/plan-limits.ts:89-128
+export async function canGenerateReport(userId: string): Promise<{
+  allowed: boolean;
+  reason?: string;
+  currentCount: number;
+  limit: number;
+}>
+```
+
+**When you hit your limit:**
+1. Report generation buttons become disabled
+2. UI displays "limit reached" warning
+3. Shows days until cycle reset
+4. Offers upgrade option
+
+<Info>
+  Your report limit automatically resets when your billing cycle renews. See [Billing Cycles](/pricing/billing-cycles) for details.
+</Info>
+
+## White-Label Feature Access
+
+White-label branding availability varies by plan:
+
+### Free Plan
+- **White-label**: Not available
+- **Branding**: All reports include Reportr branding
+- **Customization**: Basic (company name, primary color)
+
+### Starter Plan
+- **White-label**: Available as $20/month add-on
+- **Branding**: Remove Reportr branding when enabled
+- **Customization**: Full (logo, colors, support email)
+
+### Professional & Agency Plans
+- **White-label**: Included in plan
+- **Branding**: Fully customizable reports
+- **Customization**: All branding options available
+
+**Implementation**: Checked via `canUseWhiteLabel()` function in `src/lib/plan-limits.ts:183`
+
+<Tip>
+  Trial users on any plan can test white-label features for free during the trial period.
+</Tip>
+
+## Usage Monitoring
+
+### Check Your Current Usage
+
+Reportr provides real-time usage tracking through the dashboard:
+
+- **Clients**: Shows `X / Y clients` with usage percentage
+- **Reports**: Displays reports used in current cycle
+- **Cycle Info**: Days remaining until reset
+- **Limit Warnings**: Alerts when approaching 80% usage
+
+**Implementation**: Retrieved via `getUsageStats()` in `src/lib/plan-limits.ts:133`
+
+### API Response Example
+
+```json
+{
+  "clients": {
+    "used": 3,
+    "limit": 5,
+    "percentage": 60,
+    "remaining": 2,
+    "isAtLimit": false,
+    "isNearLimit": false
+  },
+  "reports": {
+    "used": 18,
+    "limit": 25,
+    "percentage": 72,
+    "remaining": 7,
+    "isAtLimit": false,
+    "isNearLimit": false
+  },
+  "plan": "STARTER",
+  "whiteLabelEnabled": false
+}
+```
+
+## Upgrade Recommendations
+
+The system provides intelligent upgrade suggestions:
+
+- **80%+ client usage**: Suggests plan upgrade
+- **80%+ report usage**: Recommends higher tier
+- **Frequent limit hits**: Displays upgrade banner
+
+## Technical Implementation
+
+All plan limits are defined in `src/lib/plan-limits.ts` with enforcement at:
+
+1. **Client creation** (`POST /api/clients/create`)
+2. **Report generation** (`POST /api/reports/generate`)
+3. **White-label access** (during report customization)
+
+The system uses Prisma ORM with PostgreSQL to track:
+- Client count per user
+- Reports generated in current cycle
+- Billing cycle start/end dates
+- Plan tier and feature flags
+
+## Next Steps
+
+<Card title="Billing Cycles" icon="calendar" href="/pricing/billing-cycles">
+  Learn how 30-day rolling cycles work and when your limits reset
+</Card>

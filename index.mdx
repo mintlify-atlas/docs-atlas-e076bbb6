@@ -1,97 +1,265 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: Welcome to Reportr
+description: AI-powered SEO reporting SaaS for digital marketing agencies with white-label branding and automated data collection.
+mode: custom
 ---
 
-## Setting up
+<div className="relative overflow-hidden dark:bg-[#0a1a3a] bg-white py-20">
+  <div className="absolute inset-0 dark:bg-gradient-to-br dark:from-[#0a1a3a] dark:via-[#0f1f4a] dark:to-[#0a1a3a] bg-gradient-to-br from-gray-50 via-white to-gray-50" />
+  
+  <div className="relative max-w-7xl mx-auto px-6 lg:px-8">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+      <div className="lg:col-span-7">
+        <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold dark:text-white text-gray-900 mb-6">
+          Professional SEO reports for your clients
+        </h1>
+        <p className="text-lg sm:text-xl dark:text-gray-300 text-gray-600 max-w-2xl mb-8">
+          Generate branded PDF reports automatically by collecting data from Google Search Console, Google Analytics 4, and PageSpeed Insights. Add AI-powered insights with Claude API.
+        </p>
+        <div className="flex flex-wrap gap-4">
+          <a 
+            href="/quickstart" 
+            className="inline-flex items-center px-6 py-3 text-base font-semibold rounded-lg dark:bg-[#444444] bg-[#444444] dark:text-white text-white dark:hover:bg-[#333333] hover:bg-[#333333] transition-colors"
+          >
+            Get Started
+          </a>
+          <a 
+            href="/api/clients/create" 
+            className="inline-flex items-center px-6 py-3 text-base font-semibold rounded-lg dark:border-white/30 border-gray-300 border dark:bg-white/10 bg-gray-100 dark:text-white text-gray-900 dark:hover:bg-white/20 hover:bg-gray-200 transition-colors"
+          >
+            Explore API Reference
+          </a>
+        </div>
+      </div>
+      <div className="lg:col-span-5 hidden lg:block">
+        <div className="dark:bg-[#1a1d27] bg-gray-100 rounded-2xl p-8 dark:border-[#27272a] border-gray-200 border">
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full dark:bg-[#444444] bg-[#444444] flex items-center justify-center">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div>
+                <div className="text-sm font-semibold dark:text-white text-gray-900">White-label branding</div>
+                <div className="text-xs dark:text-gray-400 text-gray-600">Custom colors and logos</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full dark:bg-[#444444] bg-[#444444] flex items-center justify-center">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+              </div>
+              <div>
+                <div className="text-sm font-semibold dark:text-white text-gray-900">AI-powered insights</div>
+                <div className="text-xs dark:text-gray-400 text-gray-600">Claude API integration</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full dark:bg-[#444444] bg-[#444444] flex items-center justify-center">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+              </div>
+              <div>
+                <div className="text-sm font-semibold dark:text-white text-gray-900">Automated data collection</div>
+                <div className="text-xs dark:text-gray-400 text-gray-600">Google APIs integration</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
-Get your documentation site up and running in minutes.
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-2xl sm:text-3xl font-semibold dark:text-white text-gray-900 mb-3">
+    Quick start
+  </h2>
+  <p className="text-base dark:text-gray-400 text-gray-600 mb-8">
+    Get your first SEO report generated in minutes
+  </p>
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+  <Steps>
+    <Step title="Sign up and authenticate">
+      Create your account using Google OAuth. Your Google credentials will be used to access Search Console and Analytics data for your clients.
 
-## Make it yours
+      ```bash
+      # Authentication happens via NextAuth.js
+      POST /api/auth/signin/google
+      ```
+    </Step>
 
-Design a docs site that looks great and empowers your users.
+    <Step title="Connect your first client">
+      Add a client by providing their domain and connecting their Google Search Console and Analytics properties.
 
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
-  </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
-  </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
-  </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
-  </Card>
-</Columns>
+      ```bash
+      curl -X POST https://your-domain.com/api/clients \
+        -H "Content-Type: application/json" \
+        -d '{
+          "name": "Acme Inc",
+          "domain": "acme.com",
+          "contactEmail": "contact@acme.com"
+        }'
+      ```
 
-## Create beautiful pages
+      <Accordion title="Expected response">
+        ```json
+        {
+          "id": "client_123abc",
+          "name": "Acme Inc",
+          "domain": "acme.com",
+          "googleSearchConsoleConnected": false,
+          "googleAnalyticsConnected": false,
+          "createdAt": "2024-03-04T12:00:00Z"
+        }
+        ```
+      </Accordion>
+    </Step>
 
-Everything you need to create world-class documentation.
+    <Step title="Authorize Google integrations">
+      Connect Search Console and Analytics 4 for the client. This enables automated data collection.
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+      Navigate to the client settings and authorize both Google APIs. You'll need appropriate permissions for the client's Google account.
 
-## Need inspiration?
+      Learn more in the [Google APIs setup guide](/guides/google-apis-setup).
+    </Step>
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+    <Step title="Generate your first report">
+      Trigger report generation via the dashboard or API. The system will collect data, generate AI insights, and create a branded PDF.
+
+      ```bash
+      curl -X POST https://your-domain.com/api/reports \
+        -H "Content-Type: application/json" \
+        -d '{
+          "clientId": "client_123abc",
+          "title": "March 2024 SEO Report"
+        }'
+      ```
+
+      Reports typically complete in under 3 minutes. You'll receive a URL to the generated PDF.
+    </Step>
+  </Steps>
+</div>
+
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-2xl sm:text-3xl font-semibold dark:text-white text-gray-900 mb-3">
+    Explore by topic
+  </h2>
+  <p className="text-base dark:text-gray-400 text-gray-600 mb-8">
+    Deep dive into Reportr's core capabilities
+  </p>
+
+  <CardGroup cols={2}>
+    <Card title="Client management" icon="users" href="/features/client-management">
+      Manage multiple clients with usage tracking and Google API connections
+    </Card>
+    <Card title="Report generation" icon="file-pdf" href="/features/report-generation">
+      Automated PDF reports with SEO metrics and AI-powered insights
+    </Card>
+    <Card title="White-label branding" icon="palette" href="/features/white-label-branding">
+      Customize colors, logos, and company names for your agency
+    </Card>
+    <Card title="Google integrations" icon="chart-line" href="/features/google-integrations">
+      Connect Search Console, Analytics 4, and PageSpeed Insights
+    </Card>
+    <Card title="AI insights" icon="sparkles" href="/features/ai-insights">
+      Generate actionable recommendations with Claude API
+    </Card>
+    <Card title="Subscription plans" icon="credit-card" href="/pricing/overview">
+      Flexible pricing tiers with client and report limits
+    </Card>
+  </CardGroup>
+</div>
+
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-2xl sm:text-3xl font-semibold dark:text-white text-gray-900 mb-3">
+    Developer resources
+  </h2>
+  <p className="text-base dark:text-gray-400 text-gray-600 mb-8">
+    Build and extend Reportr with our comprehensive guides
+  </p>
+
+  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <a href="/development/setup" className="group block rounded-2xl dark:border-[#27272a] border-gray-200 border dark:hover:border-[#444444] hover:border-[#444444] overflow-hidden no-underline transition-colors">
+      <div className="h-32 dark:bg-[#1a1d27] bg-gray-100 flex items-center justify-center">
+        <svg className="w-12 h-12 dark:text-gray-400 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+        </svg>
+      </div>
+      <div className="p-5 dark:bg-[#1a1d27] bg-white">
+        <h3 className="text-base font-semibold dark:text-white text-gray-900 mb-2">Development setup</h3>
+        <p className="text-sm dark:text-gray-400 text-gray-600 mb-3">Configure your local environment and database</p>
+        <div className="flex items-center text-sm font-medium dark:text-[#444444] text-[#444444] dark:group-hover:text-[#333333] group-hover:text-[#333333]">
+          Read guide
+          <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </div>
+      </div>
+    </a>
+
+    <a href="/development/architecture/overview" className="group block rounded-2xl dark:border-[#27272a] border-gray-200 border dark:hover:border-[#444444] hover:border-[#444444] overflow-hidden no-underline transition-colors">
+      <div className="h-32 dark:bg-[#1a1d27] bg-gray-100 flex items-center justify-center">
+        <svg className="w-12 h-12 dark:text-gray-400 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+        </svg>
+      </div>
+      <div className="p-5 dark:bg-[#1a1d27] bg-white">
+        <h3 className="text-base font-semibold dark:text-white text-gray-900 mb-2">Architecture overview</h3>
+        <p className="text-sm dark:text-gray-400 text-gray-600 mb-3">Understand the system design and component structure</p>
+        <div className="flex items-center text-sm font-medium dark:text-[#444444] text-[#444444] dark:group-hover:text-[#333333] group-hover:text-[#333333]">
+          Explore architecture
+          <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </div>
+      </div>
+    </a>
+
+    <a href="/api/clients/create" className="group block rounded-2xl dark:border-[#27272a] border-gray-200 border dark:hover:border-[#444444] hover:border-[#444444] overflow-hidden no-underline transition-colors">
+      <div className="h-32 dark:bg-[#1a1d27] bg-gray-100 flex items-center justify-center">
+        <svg className="w-12 h-12 dark:text-gray-400 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+      </div>
+      <div className="p-5 dark:bg-[#1a1d27] bg-white">
+        <h3 className="text-base font-semibold dark:text-white text-gray-900 mb-2">API reference</h3>
+        <p className="text-sm dark:text-gray-400 text-gray-600 mb-3">Complete REST API documentation with examples</p>
+        <div className="flex items-center text-sm font-medium dark:text-[#444444] text-[#444444] dark:group-hover:text-[#333333] group-hover:text-[#333333]">
+          View API docs
+          <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </div>
+      </div>
+    </a>
+  </div>
+</div>
+
+<div className="mt-20 mb-16 max-w-5xl mx-auto px-6">
+  <div className="dark:bg-[#1a1d27] bg-gray-100 rounded-2xl p-8 sm:p-12 dark:border-[#27272a] border-gray-200 border text-center">
+    <h2 className="text-2xl sm:text-3xl font-bold dark:text-white text-gray-900 mb-4">
+      Ready to get started?
+    </h2>
+    <p className="text-base dark:text-gray-400 text-gray-600 max-w-2xl mx-auto mb-8">
+      Start generating professional SEO reports for your clients today. Sign up takes less than a minute.
+    </p>
+    <div className="flex flex-col sm:flex-row gap-4 justify-center">
+      <a 
+        href="/quickstart" 
+        className="inline-flex items-center justify-center px-6 py-3 text-base font-semibold rounded-lg dark:bg-[#444444] bg-[#444444] dark:text-white text-white dark:hover:bg-[#333333] hover:bg-[#333333] transition-colors"
+      >
+        Get Started
+      </a>
+      <a 
+        href="https://github.com/scr83/reportr" 
+        className="inline-flex items-center justify-center px-6 py-3 text-base font-semibold rounded-lg dark:border-white/30 border-gray-300 border dark:bg-white/10 bg-gray-100 dark:text-white text-gray-900 dark:hover:bg-white/20 hover:bg-gray-200 transition-colors"
+      >
+        View on GitHub
+      </a>
+    </div>
+  </div>
+</div>

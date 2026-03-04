@@ -1,0 +1,452 @@
+---
+title: 'NextAuth.js Configuration'
+description: 'Complete NextAuth.js setup with JWT sessions, Google OAuth, and custom callbacks'
+---
+
+## Overview
+
+Reportr uses [NextAuth.js](https://next-auth.js.org/) v4 for authentication with Google OAuth provider. The authentication system uses JWT-based sessions with custom callbacks for user management, email verification, and subscription tracking.
+
+## Configuration
+
+The main authentication configuration is in `src/lib/auth.ts:24`:
+
+```typescript
+import { NextAuthOptions } from 'next-auth';
+import GoogleProvider from 'next-auth/providers/google';
+
+export const authOptions: NextAuthOptions = {
+  providers: [
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    })
+  ],
+  session: {
+    strategy: 'jwt'
+  },
+  callbacks: {
+    // Custom callbacks documented below
+  }
+}
+```
+
+## Environment Variables
+
+<ParamField path="NEXTAUTH_SECRET" type="string" required>
+  Secret key for encrypting JWT tokens. Generate with:
+  ```bash
+  openssl rand -base64 32
+  ```
+</ParamField>
+
+<ParamField path="NEXTAUTH_URL" type="string" required>
+  The canonical URL of your site. Examples:
+  - Development: `http://localhost:3000`
+  - Production: `https://reportr.agency`
+</ParamField>
+
+<ParamField path="NEXT_PUBLIC_APP_URL" type="string" required>
+  Public-facing app URL used in client-side code.
+</ParamField>
+
+## Session Strategy
+
+Reportr uses JWT sessions instead of database sessions for better performance:
+
+```typescript
+session: {
+  strategy: 'jwt'
+}
+```
+
+**Benefits:**
+- No database queries for session verification
+- Stateless authentication
+- Better scalability
+
+**Trade-offs:**
+- Cannot immediately revoke sessions
+- Session data refreshes on next request
+
+## Custom Session Type
+
+The session is extended to include additional user properties from `src/lib/auth.ts:9`:
+
+```typescript
+declare module 'next-auth' {
+  interface Session {
+    user: {
+      id: string;
+      name?: string | null;
+      email?: string | null;
+      image?: string | null;
+      emailVerified?: boolean;
+      paypalSubscriptionId?: string | null;
+      subscriptionStatus?: string;
+      signupFlow?: string | null;
+    };
+  }
+}
+```
+
+<ResponseField name="user" type="object">
+  <ResponseField name="id" type="string" required>
+    User's unique database ID
+  </ResponseField>
+  
+  <ResponseField name="email" type="string">
+    User's email from Google OAuth
+  </ResponseField>
+  
+  <ResponseField name="name" type="string">
+    User's full name from Google profile
+  </ResponseField>
+  
+  <ResponseField name="image" type="string">
+    URL to user's Google profile picture
+  </ResponseField>
+  
+  <ResponseField name="emailVerified" type="boolean">
+    Whether user has verified their email address
+  </ResponseField>
+  
+  <ResponseField name="paypalSubscriptionId" type="string">
+    PayPal subscription ID if user has active subscription
+  </ResponseField>
+  
+  <ResponseField name="subscriptionStatus" type="string">
+    Current subscription status: `free`, `active`, `cancelled`, etc.
+  </ResponseField>
+  
+  <ResponseField name="signupFlow" type="string">
+    Signup flow type: `FREE` or `PAID_TRIAL`
+  </ResponseField>
+</ResponseField>
+
+## Authentication Callbacks
+
+### Sign In Callback
+
+Handles user creation, signup flow detection, and trial abuse prevention from `src/lib/auth.ts:51`:
+
+```typescript
+async signIn({ user, account, profile }) {
+  if (account?.provider === 'google' && user.email) {
+    // Read signup intent from cookie
+    let signupFlow = 'FREE';
+    try {
+      const cookieStore = cookies();
+      const signupIntent = cookieStore.get('signupIntent');
+      signupFlow = signupIntent?.value || 'FREE';
+    } catch (error) {
+      console.warn('Could not access cookies:', error);
+    }
+
+    // Check if user exists
+    let existingUser = await prisma.user.findUnique({
+      where: { email: user.email }
+    });
+
+    // Create new user if needed
+    if (!existingUser) {
+      const hasTrialRecord = await hasUsedTrial(user.email);
+      
+      existingUser = await prisma.user.create({
+        data: {
+          email: user.email,
+          name: user.name,
+          image: user.image,
+          trialUsed: hasTrialRecord,
+          signupFlow: signupFlow,
+        }
+      });
+
+      // Send welcome email (non-blocking)
+      sendWelcomeEmail(existingUser.id, user.email, user.name).catch(console.error);
+    }
+
+    user.id = existingUser.id;
+    return true;
+  }
+  return true;
+}
+```
+
+**Key Features:**
+- Detects signup flow from cookie (`signupIntent`)
+- Prevents trial abuse with `hasUsedTrial()` check
+- Automatically creates user records
+- Sends welcome email asynchronously
+
+### JWT Callback
+
+Enriches JWT tokens with fresh database data from `src/lib/auth.ts:152`:
+
+```typescript
+jwt: async ({ token, user }) => {
+  if (user) {
+    token.sub = user.id;
+  }
+
+  // Fetch latest user data from database
+  if (token.sub) {
+    const dbUser = await prisma.user.findUnique({
+      where: { id: token.sub },
+      select: { 
+        emailVerified: true,
+        paypalSubscriptionId: true,
+        subscriptionStatus: true,
+        signupFlow: true
+      }
+    });
+    
+    token.emailVerified = !!dbUser?.emailVerified;
+    token.paypalSubscriptionId = dbUser?.paypalSubscriptionId || null;
+    token.subscriptionStatus = dbUser?.subscriptionStatus || 'free';
+    token.signupFlow = dbUser?.signupFlow || null;
+  }
+
+  return token;
+}
+```
+
+**Purpose:**
+- Refreshes user data on each token generation
+- Keeps session in sync with database
+- Adds subscription and verification status
+
+### Session Callback
+
+Transforms JWT token into session object from `src/lib/auth.ts:139`:
+
+```typescript
+session: ({ session, token }) => {
+  return {
+    ...session,
+    user: {
+      ...session.user,
+      id: token.sub!,
+      emailVerified: token.emailVerified as boolean,
+      paypalSubscriptionId: token.paypalSubscriptionId as string | null,
+      subscriptionStatus: token.subscriptionStatus as string,
+      signupFlow: token.signupFlow as string | null,
+    },
+  }
+}
+```
+
+### Redirect Callback
+
+Controls post-authentication redirects from `src/lib/auth.ts:35`:
+
+```typescript
+redirect: ({ url, baseUrl }) => {
+  // Redirect to dashboard instead of verify-email-prompt
+  if (url.includes('/verify-email-prompt')) {
+    return `${baseUrl}/dashboard?onboarding=true`;
+  }
+  
+  // Make relative URLs absolute
+  if (url.startsWith('/')) {
+    return `${baseUrl}${url}`;
+  }
+  
+  // Allow same-origin URLs
+  if (new URL(url).origin === baseUrl) {
+    return url;
+  }
+  
+  // Default to dashboard for external URLs
+  return `${baseUrl}/dashboard`;
+}
+```
+
+## API Routes
+
+NextAuth.js catch-all route at `src/app/api/auth/[...nextauth]/route.ts:1`:
+
+```typescript
+import NextAuth from 'next-auth'
+import { authOptions } from '@/lib/auth'
+
+const handler = NextAuth(authOptions)
+
+export { handler as GET, handler as POST }
+```
+
+This handles all NextAuth.js endpoints:
+- `GET /api/auth/signin` - Sign in page
+- `GET /api/auth/signout` - Sign out
+- `GET /api/auth/session` - Get current session
+- `POST /api/auth/callback/google` - OAuth callback
+- `GET /api/auth/csrf` - CSRF token
+- `GET /api/auth/providers` - Available providers
+
+## Helper Functions
+
+### Get Current User
+
+Retrieve authenticated user in server components from `src/lib/auth-helpers.ts:5`:
+
+```typescript
+import { getCurrentUser } from '@/lib/auth-helpers'
+
+export default async function DashboardPage() {
+  const user = await getCurrentUser()
+  
+  if (!user) {
+    redirect('/api/auth/signin')
+  }
+  
+  return <div>Welcome {user.name}!</div>
+}
+```
+
+### Require User
+
+Enforce authentication with automatic error handling from `src/lib/auth-helpers.ts:43`:
+
+```typescript
+import { requireUser } from '@/lib/auth-helpers'
+
+export async function GET() {
+  const user = await requireUser() // Throws if not authenticated
+  
+  // User is guaranteed to exist here
+  return Response.json({ userId: user.id })
+}
+```
+
+## Client-Side Usage
+
+### Using useSession Hook
+
+```typescript
+'use client'
+
+import { useSession } from 'next-auth/react'
+
+export function ProfileButton() {
+  const { data: session, status } = useSession()
+  
+  if (status === 'loading') {
+    return <div>Loading...</div>
+  }
+  
+  if (status === 'unauthenticated') {
+    return <a href="/api/auth/signin">Sign in</a>
+  }
+  
+  return (
+    <div>
+      <img src={session.user.image} alt={session.user.name} />
+      <span>{session.user.email}</span>
+      <span>Status: {session.user.subscriptionStatus}</span>
+    </div>
+  )
+}
+```
+
+### Sign Out
+
+```typescript
+import { signOut } from 'next-auth/react'
+
+function LogoutButton() {
+  return (
+    <button onClick={() => signOut({ callbackUrl: '/' })}>
+      Sign Out
+    </button>
+  )
+}
+```
+
+## Session Management
+
+### Check Session Status
+
+```typescript
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
+
+export async function GET() {
+  const session = await getServerSession(authOptions)
+  
+  if (!session) {
+    return new Response('Unauthorized', { status: 401 })
+  }
+  
+  return Response.json({
+    userId: session.user.id,
+    email: session.user.email,
+    verified: session.user.emailVerified,
+    subscription: session.user.subscriptionStatus
+  })
+}
+```
+
+### Access Token in Middleware
+
+From `src/middleware.ts:31`:
+
+```typescript
+import { getToken } from 'next-auth/jwt'
+import type { NextRequest } from 'next/server'
+
+export async function middleware(request: NextRequest) {
+  const token = await getToken({ 
+    req: request, 
+    secret: process.env.NEXTAUTH_SECRET 
+  })
+  
+  if (!token) {
+    return NextResponse.redirect(new URL('/api/auth/signin', request.url))
+  }
+  
+  // Access custom properties
+  const emailVerified = token.emailVerified as boolean
+  const subscriptionStatus = token.subscriptionStatus as string
+  
+  // Your logic here
+}
+```
+
+## Auto-Registration Flow
+
+Users are automatically created on first sign-in from `src/lib/auth-helpers.ts:18`:
+
+```typescript
+// If user doesn't exist, create them
+if (!user) {
+  const now = new Date()
+  const billingCycleEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
+  
+  user = await prisma.user.create({
+    data: {
+      email: session.user.email,
+      name: session.user.name,
+      image: session.user.image,
+      companyName: session.user.name ? `${session.user.name}'s Agency` : 'My Agency',
+      billingCycleStart: now,
+      billingCycleEnd: billingCycleEnd
+    }
+  })
+}
+```
+
+## Security Considerations
+
+<Warning>
+  Always validate and sanitize user data before storing in database, even from trusted OAuth providers.
+</Warning>
+
+- JWT tokens are encrypted with `NEXTAUTH_SECRET`
+- Tokens expire and refresh automatically
+- Session data syncs with database on token refresh
+- CSRF protection enabled by default
+- Secure cookie settings in production
+
+## Related Pages
+
+- [Google OAuth Setup](/api/authentication/google-oauth)

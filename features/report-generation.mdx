@@ -1,0 +1,573 @@
+---
+title: 'Report Generation'
+description: 'Generate comprehensive SEO reports with Google Search Console, Analytics 4, and PageSpeed Insights data'
+icon: 'file-pdf'
+---
+
+## Overview
+
+Reportr automatically generates professional PDF reports by pulling data from multiple Google APIs, processing it with AI-powered insights, and compiling it into a branded PDF document. The entire process takes under 3 minutes.
+
+<Info>
+  **Report Limits by Plan**: Free (5/month) | Starter (25/month) | Professional (100/month) | Agency (Unlimited)
+  
+  Limits reset at the start of your billing cycle.
+</Info>
+
+## Report Generation Process
+
+When you generate a report, Reportr follows this pipeline:
+
+<Steps>
+  <Step title="Data Collection">
+    Fetches data in parallel from:
+    - Google Search Console (clicks, impressions, keywords, pages)
+    - Google Analytics 4 (sessions, users, traffic trends)
+    - PageSpeed Insights (mobile & desktop performance scores)
+  </Step>
+  
+  <Step title="Data Processing">
+    - Cross-references Search Console keywords with Analytics landing pages
+    - Calculates period-over-period changes
+    - Aggregates daily metrics for charts
+    - Generates time-series data for trend visualization
+  </Step>
+  
+  <Step title="AI Insights Generation">
+    Uses Claude API to analyze data and generate 5 strategic recommendations with:
+    - Specific, data-driven insights
+    - Priority levels (high/medium/low)
+    - Expected impact estimates
+    - Actionable next steps
+  </Step>
+  
+  <Step title="PDF Creation">
+    Renders the report using React-PDF with:
+    - Your white-label branding (if enabled)
+    - Professional charts and visualizations
+    - Executive summary
+    - Detailed metrics and insights
+  </Step>
+  
+  <Step title="Storage & Delivery">
+    - Uploads PDF to Vercel Blob storage
+    - Updates database with report metadata
+    - Makes PDF available for download
+    - Increments client's report counter
+  </Step>
+</Steps>
+
+## Starting a Report
+
+<Tabs>
+  <Tab title="From Client Card">
+    Navigate to the Clients page and click **Generate Report** on any fully configured client.
+    
+    <Warning>
+      The client must have both Google Search Console and GA4 configured before you can generate reports.
+    </Warning>
+  </Tab>
+  
+  <Tab title="From Generate Report Page">
+    1. Go to **Generate Report** in the sidebar
+    2. Select a client from the dropdown
+    3. Choose date range and report type
+    4. Click **Generate Report**
+  </Tab>
+</Tabs>
+
+## Report Configuration Options
+
+### Date Range Selection
+
+Choose the time period for your report:
+
+<AccordionGroup>
+  <Accordion title="Last 30 Days (Default)">
+    Pulls data from 30 days ago to yesterday. Best for monthly client reports.
+  </Accordion>
+  
+  <Accordion title="Last 7 Days">
+    Quick weekly snapshot of recent performance.
+  </Accordion>
+  
+  <Accordion title="Last 90 Days">
+    Quarterly view with longer-term trends and seasonal patterns.
+  </Accordion>
+  
+  <Accordion title="Custom Range">
+    Select any start and end date. Maximum range is 16 months (Google Search Console API limit).
+  </Accordion>
+</AccordionGroup>
+
+### Report Types
+
+Reportr offers three report formats:
+
+<CardGroup cols={3}>
+  <Card title="Executive" icon="crown">
+    **High-level overview**
+    
+    - Key metrics summary
+    - AI insights only
+    - 3-5 pages
+    - Perfect for C-suite
+  </Card>
+  
+  <Card title="Standard" icon="file-lines">
+    **Comprehensive analysis**
+    
+    - Full metrics breakdown
+    - Top keywords & pages
+    - Traffic trends
+    - AI insights
+    - 8-12 pages
+    - Best for stakeholders
+  </Card>
+  
+  <Card title="Custom" icon="sliders">
+    **Tailored reporting**
+    
+    - Choose specific sections
+    - Include/exclude metrics
+    - Add custom commentary
+    - Variable page count
+    - For special requests
+  </Card>
+</CardGroup>
+
+## Report Data Sources
+
+### Google Search Console
+
+The Search Console API provides organic search performance data:
+
+```typescript Search Console Data Structure
+{
+  totalClicks: 1234,
+  totalImpressions: 45678,
+  averagePosition: 12.3,
+  averageCTR: 2.7,
+  topKeywords: [
+    {
+      keyword: "best seo tools",
+      clicks: 234,
+      impressions: 5432,
+      position: 3.2,
+      ctr: 4.3
+    }
+    // ... top 10 keywords
+  ],
+  topPages: [
+    {
+      page: "https://example.com/blog/seo-guide",
+      clicks: 543,
+      impressions: 12345,
+      position: 5.6,
+      ctr: 4.4
+    }
+    // ... top 10 pages
+  ],
+  dailyData: [
+    {
+      date: "2025-01-15",
+      clicks: 42,
+      impressions: 987,
+      position: 12.1,
+      ctr: 4.3
+    }
+    // ... daily time series
+  ]
+}
+```
+
+### Google Analytics 4
+
+GA4 provides organic traffic and user behavior metrics:
+
+```typescript Analytics Data Structure
+{
+  organicSessions: 2345,
+  sessionsDelta: 15.3, // % change from previous period
+  bounceRate: 42.5,
+  averageSessionDuration: 145.2, // seconds
+  topLandingPages: [
+    {
+      page: "/blog/seo-guide",
+      sessions: 432,
+      users: 387,
+      bounceRate: 38.2,
+      averageSessionDuration: 187.4
+    }
+    // ... top 10 landing pages
+  ],
+  trafficTrend: [
+    {
+      date: "2025-01-15",
+      sessions: 78,
+      users: 65
+    }
+    // ... daily traffic data
+  ]
+}
+```
+
+### PageSpeed Insights
+
+Performance scores and Core Web Vitals:
+
+```typescript PageSpeed Data Structure
+{
+  url: "https://example.com",
+  mobileScore: 78,
+  desktopScore: 92,
+  coreWebVitals: {
+    lcp: 2400,  // Largest Contentful Paint (ms)
+    fid: 85,    // First Input Delay (ms)
+    cls: 0.08   // Cumulative Layout Shift (score)
+  },
+  opportunities: [
+    {
+      title: "Properly size images",
+      description: "Serve images that are appropriately-sized...",
+      savings: 1200, // milliseconds
+      impact: "high"
+    }
+    // ... top 10 optimization opportunities
+  ]
+}
+```
+
+## AI-Powered Insights
+
+Reportr uses Claude 4.5 Sonnet to analyze your data and generate strategic recommendations.
+
+### Insight Categories
+
+<Tabs>
+  <Tab title="Keyword Insights">
+    Recommendations for keyword optimization:
+    
+    - Page 2 ranking opportunities (positions 11-20)
+    - Low-CTR keywords to optimize
+    - Keyword cannibalization issues
+    - Seasonal keyword opportunities
+  </Tab>
+  
+  <Tab title="Technical Insights">
+    Site performance and technical SEO:
+    
+    - Core Web Vitals improvements
+    - Mobile performance optimizations
+    - Page speed opportunities
+    - Crawl and indexing issues
+  </Tab>
+  
+  <Tab title="Content Insights">
+    Content strategy recommendations:
+    
+    - High-potential pages to expand
+    - Content gap analysis
+    - Topic cluster opportunities
+    - Thin content to improve
+  </Tab>
+  
+  <Tab title="Performance Insights">
+    Tracking and conversion optimization:
+    
+    - High bounce rate pages
+    - Low engagement content
+    - Traffic source optimization
+    - Conversion funnel improvements
+  </Tab>
+</Tabs>
+
+### AI Prompt Engineering
+
+The system sends structured data to Claude with specific instructions:
+
+```typescript AI Insight Generation (from source)
+const prompt = `
+Generate exactly 5 strategic recommendations based on this SEO data.
+
+Each recommendation MUST be:
+1. SPECIFIC to this client's actual data (reference keywords, pages, metrics)
+2. ACTIONABLE with clear next steps  
+3. PRIORITIZED based on potential impact
+
+DATA TO ANALYZE:
+- Domain: ${domain}
+- Total Clicks: ${clicks} (${clicksChange}% change)
+- Average Position: ${position}
+- Top Keywords: ${topKeywords.join(', ')}
+- Mobile Score: ${mobileScore}/100
+
+Return JSON with exactly 5 recommendations:
+{
+  "insights": [
+    {
+      "title": "Action-oriented title",
+      "description": "2-3 sentences with specific data references",
+      "priority": "high|medium|low",
+      "category": "keyword|technical|content|performance",
+      "expectedImpact": "Quantified expected outcome",
+      "actionItems": ["Step 1", "Step 2", "Step 3"]
+    }
+  ]
+}
+`;
+```
+
+### Fallback Insights
+
+If AI generation fails, rule-based insights are used:
+
+- Mobile performance alerts (score < 75)
+- Page 2 keyword opportunities (position 8-20)
+- Content expansion strategies
+- Technical SEO foundations
+- Performance tracking recommendations
+
+## Report Sections
+
+### Standard Report Structure
+
+<Steps>
+  <Step title="Cover Page">
+    - Report title and type
+    - Client name and domain
+    - Report period dates
+    - Your agency branding (white-label)
+  </Step>
+  
+  <Step title="Executive Summary">
+    - Key metrics at a glance
+    - Period-over-period changes
+    - Quick wins and opportunities
+    - High-priority insights
+  </Step>
+  
+  <Step title="Search Console Metrics">
+    - Total clicks and impressions
+    - Average position and CTR
+    - Top 10 performing keywords
+    - Top 10 performing pages
+    - Daily trend charts
+  </Step>
+  
+  <Step title="Analytics Metrics">
+    - Organic sessions and users
+    - Bounce rate and session duration
+    - Top landing pages
+    - Traffic trend visualization
+  </Step>
+  
+  <Step title="PageSpeed Insights">
+    - Mobile and desktop scores
+    - Core Web Vitals breakdown
+    - Performance opportunities
+    - Technical optimization priorities
+  </Step>
+  
+  <Step title="AI Strategic Recommendations">
+    - 5 data-driven insights
+    - Priority levels and expected impact
+    - Specific action items for each
+    - Data sources referenced
+  </Step>
+</Steps>
+
+## White-Label Branding
+
+If you have white-label enabled, reports include your custom branding:
+
+<CardGroup cols={2}>
+  <Card title="Cover Page" icon="image">
+    - Your agency logo
+    - Company name
+    - Website URL
+    - Primary brand color accents
+  </Card>
+  
+  <Card title="Throughout Report" icon="palette">
+    - Headers use primary color
+    - Charts match brand colors
+    - Footer with agency info
+    - No Reportr branding
+  </Card>
+</CardGroup>
+
+### Branding Implementation
+
+```typescript PDF Branding (from CoverPage.tsx)
+const getLogoUrl = () => {
+  const defaultReportrLogo = 'data:image/svg+xml;base64,...';
+  
+  // Use agency logo if white-label enabled
+  if (data.branding.whiteLabelEnabled && data.branding.logo) {
+    return data.branding.logo;
+  }
+  
+  // Otherwise use Reportr logo
+  return defaultReportrLogo;
+};
+
+const brandedStyles = createBrandedStyles(data.branding.primaryColor);
+```
+
+## Accessing Generated Reports
+
+After generation completes:
+
+1. **Reports Page**: View all generated reports in the Reports dashboard
+2. **Client Card**: See report count and last generated date on each client
+3. **Direct Download**: Click the PDF icon to download any report
+4. **Share Link**: Get a shareable link to send to clients
+
+### Report Metadata
+
+```typescript Report Record
+{
+  id: "clx123...",
+  title: "SEO Report - January 2025",
+  status: "COMPLETED",
+  pdfUrl: "https://blob.vercel-storage.com/...",
+  pdfSize: 245678, // bytes
+  processingStartedAt: "2025-01-15T10:30:00Z",
+  processingCompletedAt: "2025-01-15T10:32:45Z",
+  generationTimeMs: 165000, // 2.75 minutes
+  
+  // AI Insights metadata
+  aiInsights: [...], // Array of insight objects
+  aiInsightsSource: "ai", // or "fallback"
+  aiTokensUsed: 2847,
+  aiCostUsd: 0.0085,
+  
+  // Report data snapshot
+  data: {
+    clientName: "Acme Corp",
+    startDate: "2025-01-01",
+    endDate: "2025-01-31",
+    agencyName: "Your Agency",
+    gscData: {...},
+    ga4Data: {...},
+    pageSpeedData: {...}
+  }
+}
+```
+
+## Error Handling
+
+<AccordionGroup>
+  <Accordion title="Google API Rate Limits" icon="timer">
+    **Error**: "Rate limit exceeded. Please try again in a few minutes."
+    
+    **Solution**: Reportr implements automatic retry with exponential backoff. Wait 5-10 minutes and try again. The system retries up to 3 times automatically.
+  </Accordion>
+  
+  <Accordion title="Token Expiry" icon="key">
+    **Error**: "Invalid credentials" or "Token expired"
+    
+    **Solution**: Reportr automatically refreshes expired tokens. If this fails, disconnect and reconnect the client's Google account.
+  </Accordion>
+  
+  <Accordion title="Insufficient Data" icon="chart-simple">
+    **Error**: "Not enough data for the selected period"
+    
+    **Solution**: Choose a longer date range or verify the client has traffic data in Google Search Console and Analytics for the selected period.
+  </Accordion>
+  
+  <Accordion title="AI Generation Failure" icon="robot">
+    **Error**: "Failed to generate AI insights"
+    
+    **Solution**: The report will still be generated with rule-based insights. This doesn't affect report quality significantly.
+  </Accordion>
+</AccordionGroup>
+
+## Performance Targets
+
+<ResponseField name="Data Fetching" type="timing">
+  30-45 seconds - Parallel API calls to Google Search Console, Analytics, and PageSpeed
+</ResponseField>
+
+<ResponseField name="AI Insights" type="timing">
+  15-30 seconds - Claude API analysis and insight generation
+</ResponseField>
+
+<ResponseField name="PDF Generation" type="timing">
+  20-30 seconds - React-PDF rendering and file creation
+</ResponseField>
+
+<ResponseField name="Total Time" type="timing">
+  **Target**: Under 3 minutes end-to-end
+  
+  **Average**: 2-2.5 minutes for standard reports
+</ResponseField>
+
+## Billing & Limits
+
+### Report Counting
+
+Each successful report generation counts against your monthly limit:
+
+```typescript Limit Check (from source)
+const limitCheck = await canGenerateReport(user.id);
+
+if (!limitCheck.allowed) {
+  return res.status(403).json({
+    error: limitCheck.reason,
+    currentCount: limitCheck.currentCount,
+    limit: limitCheck.limit,
+    upgradeRequired: true,
+    billingCycle: {
+      start: cycleStart,
+      end: cycleEnd,
+      daysRemaining: daysLeft
+    }
+  });
+}
+```
+
+### Upgrade Prompts
+
+Free users see upgrade warnings after 4+ reports:
+
+<Info>
+  You've used 4 of your 5 free reports this billing cycle. Upgrade to Starter for 25 reports per cycle!
+</Info>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Consistent Scheduling" icon="calendar-days">
+    Generate reports on the same day each month (e.g., 1st of the month for previous month's data)
+  </Card>
+  
+  <Card title="Standard Date Ranges" icon="calendar-range">
+    Use consistent periods (30 days) for month-over-month comparisons
+  </Card>
+  
+  <Card title="Review Before Sending" icon="eye">
+    Always download and review the PDF before sharing with clients
+  </Card>
+  
+  <Card title="Client Context" icon="comments">
+    Add custom commentary explaining significant changes or insights
+  </Card>
+</CardGroup>
+
+## Related Resources
+
+<CardGroup cols={3}>
+  <Card title="AI Insights" icon="brain" href="/features/ai-insights">
+    Deep dive into how AI recommendations work
+  </Card>
+  
+  <Card title="Google Integrations" icon="google" href="/features/google-integrations">
+    Configure Search Console and Analytics connections
+  </Card>
+  
+  <Card title="White-Label Branding" icon="palette" href="/features/white-label-branding">
+    Customize reports with your agency branding
+  </Card>
+</CardGroup>

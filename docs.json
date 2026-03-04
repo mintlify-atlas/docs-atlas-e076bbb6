@@ -1,122 +1,159 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "Reportr",
+  "theme": "almond",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#444444",
+    "light": "#848484",
+    "dark": "#f2f2f2"
   },
-  "favicon": "/favicon.svg",
+  "favicon": "https://media.brand.dev/25393fe1-7f35-4d60-8b92-e0764df4aca4.png",
+  "logo": {
+    "light": "https://media.brand.dev/64470d28-5011-4718-af16-f3cbcbac8714.svg",
+    "dark": "https://media.brand.dev/64470d28-5011-4718-af16-f3cbcbac8714.svg"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/scr83/reportr"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/scr83/reportr"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
+              "introduction",
               "quickstart",
-              "development"
+              "authentication"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Features",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "features/client-management",
+              "features/report-generation",
+              "features/white-label-branding",
+              "features/google-integrations",
+              "features/ai-insights"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Guides",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "guides/google-apis-setup",
+              "guides/connecting-clients",
+              "guides/generating-reports",
+              "guides/customizing-branding",
+              "guides/subscription-management"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Plans & Pricing",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "pricing/overview",
+              "pricing/plan-limits",
+              "pricing/billing-cycles",
+              "pricing/upgrading"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Authentication",
             "pages": [
-              "api-reference/introduction"
+              "api/authentication/nextauth",
+              "api/authentication/google-oauth"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Clients",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/clients/create",
+              "api/clients/list",
+              "api/clients/update",
+              "api/clients/delete",
+              "api/clients/connect-google"
+            ]
+          },
+          {
+            "group": "Reports",
+            "pages": [
+              "api/reports/generate",
+              "api/reports/list",
+              "api/reports/retrieve",
+              "api/reports/status"
+            ]
+          },
+          {
+            "group": "Google APIs",
+            "pages": [
+              "api/google/search-console",
+              "api/google/analytics",
+              "api/google/pagespeed"
+            ]
+          },
+          {
+            "group": "Subscriptions",
+            "pages": [
+              "api/subscriptions/activate",
+              "api/subscriptions/cancel",
+              "api/subscriptions/webhooks"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Development",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "development/setup",
+              "development/environment-variables",
+              "development/database"
+            ]
+          },
+          {
+            "group": "Architecture",
+            "pages": [
+              "development/architecture/overview",
+              "development/architecture/database-schema",
+              "development/architecture/atomic-design",
+              "development/architecture/api-structure"
+            ]
+          },
+          {
+            "group": "Core Systems",
+            "pages": [
+              "development/systems/google-api-client",
+              "development/systems/ai-insights",
+              "development/systems/pdf-generation",
+              "development/systems/billing-cycle",
+              "development/systems/email-sequences"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "development/deployment/vercel",
+              "development/deployment/database",
+              "development/deployment/environment"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

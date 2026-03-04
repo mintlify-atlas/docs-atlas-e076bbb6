@@ -1,0 +1,563 @@
+---
+title: Database Schema
+description: Complete Prisma database schema documentation for Reportr including all models, relationships, and indexes
+---
+
+## Overview
+
+Reportr uses PostgreSQL with Prisma ORM for type-safe database access. The schema supports multi-tenant white-label agencies with client management, report generation, subscription billing, and API usage tracking.
+
+**Database**: PostgreSQL  
+**ORM**: Prisma Client  
+**Schema Location**: `prisma/schema.prisma`
+
+## Core Models
+
+### User
+
+Agency owners with white-label branding settings and subscription management.
+
+```prisma
+model User {
+  id                   String    @id @default(cuid())
+  name                 String?
+  email                String    @unique
+  emailVerified        DateTime?
+  image                String?
+  
+  // White-label branding
+  whiteLabelEnabled    Boolean   @default(false)
+  companyName          String?
+  primaryColor         String    @default("#8B5CF6")
+  logo                 String?
+  website              String?
+  supportEmail         String?
+  
+  // Subscription & billing
+  plan                 Plan      @default(FREE)
+  planExpires          DateTime?
+  stripeCustomerId     String?
+  paypalCustomerId     String?   @unique
+  paypalSubscriptionId String?   @unique
+  subscriptionStatus   String    @default("free")
+  cancelledAt          DateTime?
+  subscriptionEndDate  DateTime?
+  billingCycleStart    DateTime  @default(now())
+  billingCycleEnd      DateTime?
+  
+  // Trial & onboarding
+  trialStartDate       DateTime?
+  trialEndDate         DateTime?
+  trialUsed            Boolean   @default(false)
+  trialType            String?   // 'EMAIL' | 'PAYPAL' | null
+  signupIp             String?
+  welcomeEmailSent     Boolean   @default(false)
+  signupFlow           String?   // 'FREE' | 'PAID_TRIAL' | null
+  
+  // Timestamps
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  
+  // Relations
+  clients              Client[]
+  reports              Report[]
+  payments             Payment[]
+  emailLogs            EmailLog[]
+  
+  @@map("users")
+}
+```
+
+**Key Features:**
+- White-label branding (custom colors, logos, company names)
+- PayPal subscription integration
+- Email verification and trial management
+- Billing cycle tracking
+- Signup flow tracking for analytics
+
+**Default Values:**
+- Primary color: `#8B5CF6` (purple)
+- Plan: `FREE`
+- Subscription status: `"free"`
+
+### Client
+
+Agency clients with Google API connections and metrics tracking.
+
+```prisma
+model Client {
+  id                           String    @id @default(cuid())
+  name                         String
+  domain                       String
+  contactEmail                 String?
+  contactName                  String?
+  
+  // Google API connections
+  googleSearchConsoleConnected Boolean   @default(false)
+  googleAnalyticsConnected     Boolean   @default(false)
+  searchConsolePropertyUrl     String?
+  googleAnalyticsPropertyId    String?
+  searchConsoleRefreshToken    String?   // Encrypted
+  analyticsRefreshToken        String?   // Encrypted
+  
+  // Google connection details
+  googleAccessToken            String?
+  googleRefreshToken           String?
+  googleTokenExpiry            DateTime?
+  googleConnectedAt            DateTime?
+  gscSiteUrl                   String?
+  gscSiteName                  String?
+  ga4PropertyId                String?
+  ga4PropertyName              String?
+  
+  // Custom metrics
+  customMetrics                Json?     // Array of custom metric objects
+  
+  // Report tracking
+  lastReportGenerated          DateTime?
+  lastDataFetch                DateTime?
+  totalReportsGenerated        Int       @default(0)
+  dataFetchStatus              String?
+  
+  // Timestamps
+  createdAt                    DateTime  @default(now())
+  updatedAt                    DateTime  @updatedAt
+  
+  // Relations
+  userId                       String
+  user                         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reports                      Report[]
+  
+  @@index([userId])
+  @@index([domain])
+  @@map("clients")
+}
+```
+
+**Key Features:**
+- Google Search Console and Analytics 4 OAuth tokens
+- Custom metrics storage (JSON)
+- Report generation tracking
+- Cascade delete when user deleted
+
+**Security:**
+- Refresh tokens should be encrypted before storage
+- Access tokens have expiry tracking
+
+### Report
+
+Generated SEO reports with processing metadata and AI insights.
+
+```prisma
+model Report {
+  id                    String       @id @default(cuid())
+  title                 String
+  status                ReportStatus @default(PENDING)
+  data                  Json?
+  pdfUrl                String?
+  pdfSize               Int?
+  
+  // Processing metadata
+  processingStartedAt   DateTime?
+  processingCompletedAt DateTime?
+  errorMessage          String?
+  generationTimeMs      Int?
+  
+  // AI insights
+  aiInsights            Json?        // Array of insight objects
+  aiInsightsSource      String?      // "ai" | "rule-based" | "fallback"
+  aiInsightsGeneratedAt DateTime?
+  aiTokensUsed          Int?         // Token count for billing
+  aiCostUsd             Float?       // Cost in USD
+  aiError               String?
+  
+  // Timestamps
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  
+  // Relations
+  clientId              String
+  userId                String
+  client                Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  user                  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([clientId])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("reports")
+}
+
+enum ReportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+```
+
+**Key Features:**
+- Complete processing lifecycle tracking
+- AI cost tracking for billing analytics
+- Multiple insight sources (AI, rule-based, fallback)
+- Performance metrics (generation time)
+
+**Data Field** (JSON):
+```typescript
+{
+  clientName: string
+  startDate: string
+  endDate: string
+  agencyName?: string
+  agencyLogo?: string
+  gscData: {
+    clicks: number
+    impressions: number
+    ctr: number
+    position: number
+    topQueries?: Array<{
+      query: string
+      clicks: number
+      impressions: number
+      ctr: number
+      position: number
+    }>
+  }
+  ga4Data: {
+    users: number
+    sessions: number
+    bounceRate: number
+    conversions: number
+  }
+}
+```
+
+### Payment
+
+PayPal subscription and payment tracking.
+
+```prisma
+model Payment {
+  id                   String   @id @default(cuid())
+  userId               String
+  paypalOrderId        String   @unique
+  paypalSubscriptionId String?
+  amount               Decimal  @db.Decimal(10, 2)
+  currency             String   @default("USD")
+  status               String
+  plan                 Plan
+  metadata             Json?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([status])
+  @@index([paypalSubscriptionId])
+  @@map("payments")
+}
+
+enum Plan {
+  FREE
+  STARTER
+  PROFESSIONAL
+  AGENCY
+}
+```
+
+**Supported Plans:**
+- **FREE** - 5 reports/month, 2 clients
+- **STARTER** - 25 reports/month, 5 clients
+- **PROFESSIONAL** - 100 reports/month, 20 clients
+- **AGENCY** - Unlimited reports, unlimited clients
+
+## Supporting Models
+
+### ApiUsage
+
+API usage tracking for analytics and billing.
+
+```prisma
+model ApiUsage {
+  id                 String   @id @default(cuid())
+  userId             String
+  endpoint           String
+  method             String
+  requestSize        Int?
+  responseSize       Int?
+  responseTime       Int?
+  statusCode         Int
+  rateLimitRemaining Int?
+  cost               Float    @default(0.0)
+  timestamp          DateTime @default(now())
+  
+  @@index([userId])
+  @@index([timestamp])
+  @@map("api_usage")
+}
+```
+
+**Usage:**
+- Track API endpoint usage per user
+- Monitor performance (response times)
+- Calculate costs (AI API usage)
+- Rate limit monitoring
+
+### WebhookEvent
+
+Webhook processing queue with retry logic.
+
+```prisma
+model WebhookEvent {
+  id            String        @id @default(cuid())
+  eventType     String
+  eventData     Json
+  status        WebhookStatus @default(PENDING)
+  attempts      Int           @default(0)
+  maxAttempts   Int           @default(3)
+  nextAttemptAt DateTime?
+  lastError     String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  
+  @@index([status])
+  @@index([nextAttemptAt])
+  @@map("webhook_events")
+}
+
+enum WebhookStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+```
+
+**Features:**
+- Automatic retry with exponential backoff
+- PayPal webhook processing
+- Error tracking per attempt
+
+### AppSetting
+
+Global application settings (key-value store).
+
+```prisma
+model AppSetting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       Json
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@map("app_settings")
+}
+```
+
+### VerificationToken
+
+Email verification tokens.
+
+```prisma
+model VerificationToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  email     String
+  expires   DateTime
+  createdAt DateTime @default(now())
+  
+  @@index([email])
+  @@index([token])
+  @@map("verification_tokens")
+}
+```
+
+### EmailLog
+
+Email delivery tracking to prevent duplicate sends.
+
+```prisma
+model EmailLog {
+  id        String   @id @default(cuid())
+  userId    String
+  emailType String   // e.g., "welcome", "onboarding_day1", "trial_3days"
+  sentAt    DateTime @default(now())
+  metadata  Json?    // Optional: store dynamic data used in email
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, emailType]) // Prevent duplicate sends
+  @@index([userId])
+  @@index([emailType])
+  @@index([sentAt])
+  @@map("email_logs")
+}
+```
+
+## Relationships
+
+### One-to-Many
+- **User → Clients** - One agency owner has many clients
+- **User → Reports** - One user creates many reports
+- **User → Payments** - One user has many payment transactions
+- **User → EmailLogs** - One user receives many emails
+- **Client → Reports** - One client has many reports
+
+### Cascade Deletes
+When a User is deleted:
+- ✅ All Clients deleted
+- ✅ All Reports deleted
+- ✅ All Payments deleted
+- ✅ All EmailLogs deleted
+
+When a Client is deleted:
+- ✅ All Reports for that client deleted
+
+## Indexes
+
+Optimized queries with strategic indexes:
+
+```prisma
+// User lookups
+@@index([email])          // Login queries
+
+// Client queries
+@@index([userId])         // User's clients
+@@index([domain])         // Domain lookups
+
+// Report queries
+@@index([clientId])       // Client's reports
+@@index([userId])         // User's reports
+@@index([status])         // Filter by status
+@@index([createdAt])      // Chronological sorting
+
+// Payment queries
+@@index([userId])         // User's payments
+@@index([status])         // Filter by status
+@@index([paypalSubscriptionId]) // Subscription lookups
+
+// Usage tracking
+@@index([userId])         // User's API usage
+@@index([timestamp])      // Time-based queries
+
+// Email tracking
+@@index([userId])
+@@index([emailType])
+@@index([sentAt])
+```
+
+## Migration Commands
+
+```bash
+# Create a migration
+npx prisma migrate dev --name description
+
+# Apply migrations
+npx prisma migrate deploy
+
+# Push schema changes (dev only)
+npx prisma db push
+
+# Generate Prisma Client
+npx prisma generate
+
+# Open Prisma Studio
+npx prisma studio
+
+# Seed database
+npm run db:seed
+```
+
+## Usage Examples
+
+### Create User with Client
+
+```typescript
+import { prisma } from '@/lib/prisma'
+
+const user = await prisma.user.create({
+  data: {
+    email: 'agency@example.com',
+    name: 'John Doe',
+    companyName: "John's SEO Agency",
+    primaryColor: '#3B82F6',
+    plan: 'STARTER',
+    clients: {
+      create: {
+        name: 'Acme Corp',
+        domain: 'https://acme.com',
+        contactEmail: 'contact@acme.com'
+      }
+    }
+  },
+  include: { clients: true }
+})
+```
+
+### Query Reports with Relations
+
+```typescript
+const reports = await prisma.report.findMany({
+  where: { userId: user.id },
+  include: {
+    client: {
+      select: {
+        id: true,
+        name: true,
+        domain: true
+      }
+    }
+  },
+  orderBy: { createdAt: 'desc' },
+  take: 10
+})
+```
+
+### Update Subscription Status
+
+```typescript
+await prisma.user.update({
+  where: { id: user.id },
+  data: {
+    plan: 'PROFESSIONAL',
+    subscriptionStatus: 'active',
+    paypalSubscriptionId: 'SUB123',
+    billingCycleStart: new Date(),
+    billingCycleEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+  }
+})
+```
+
+### Track API Usage
+
+```typescript
+await prisma.apiUsage.create({
+  data: {
+    userId: user.id,
+    endpoint: '/api/reports',
+    method: 'POST',
+    statusCode: 201,
+    responseTime: 1234,
+    cost: 0.05 // AI API cost
+  }
+})
+```
+
+## Security Best Practices
+
+1. **Never expose raw tokens** - Always encrypt Google refresh tokens before storage
+2. **Use Prisma transactions** - For operations affecting multiple tables
+3. **Validate ownership** - Always check `userId` matches authenticated user
+4. **Use indexes** - Query performance critical for large datasets
+5. **Cascade deletes** - Configured for data integrity
+6. **Unique constraints** - Prevent duplicate emails, PayPal IDs
+
+## Schema File Location
+
+Full schema: `~/workspace/source/prisma/schema.prisma`
+
+See also:
+- [Architecture Overview](/development/architecture/overview)
+- [API Structure](/development/architecture/api-structure)

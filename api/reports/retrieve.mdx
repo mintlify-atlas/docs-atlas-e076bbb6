@@ -1,0 +1,544 @@
+---
+title: "Retrieve Report"
+description: "Get detailed information about a specific report by ID"
+---
+
+## Overview
+
+The Retrieve Report endpoint fetches complete details for a single report, including full client and user information. This endpoint is useful for displaying report details, downloading PDFs, and accessing complete analytics data.
+
+## Endpoint
+
+```
+GET /api/reports/{id}
+```
+
+## Authentication
+
+Requires authentication via NextAuth.js session cookie. Users can only retrieve reports they own.
+
+## Path Parameters
+
+<ParamField path="id" type="string" required>
+  The unique identifier (CUID) of the report to retrieve.
+</ParamField>
+
+## Response
+
+### Success Response (200 OK)
+
+Returns a detailed report object with nested client and user information:
+
+<ResponseField name="report" type="object">
+  Complete report object with all fields
+  
+  <Expandable title="Report Properties">
+    <ResponseField name="id" type="string">
+      Unique report identifier (CUID format)
+    </ResponseField>
+    
+    <ResponseField name="title" type="string">
+      Report title formatted as: `{ReportType} Report - {ClientName} ({StartDate} to {EndDate})`
+    </ResponseField>
+    
+    <ResponseField name="status" type="enum">
+      Current report processing status from the `ReportStatus` enum:
+      - `PENDING` - Queued for processing
+      - `PROCESSING` - Currently being generated
+      - `COMPLETED` - Successfully generated and available
+      - `FAILED` - Generation failed (see errorMessage)
+    </ResponseField>
+    
+    <ResponseField name="data" type="object">
+      Comprehensive report data object stored as JSON in the database:
+      
+      <Expandable title="Data Object Structure">
+        **Basic Information:**
+        - `clientName` (string) - Client display name
+        - `startDate` (string) - ISO 8601 reporting period start
+        - `endDate` (string) - ISO 8601 reporting period end
+        - `reportType` (enum) - "executive" | "standard" | "custom"
+        - `generatedAt` (string) - ISO 8601 generation timestamp
+        
+        **Analytics Data:**
+        - `gscData` (object) - Google Search Console metrics:
+          - `clicks`, `impressions`, `ctr`, `position` - Aggregate metrics
+          - `topQueries` - Array of top performing search queries
+          - `dailyData` - Time-series data for trend charts
+        - `ga4Data` (object) - Google Analytics 4 metrics (flexible schema):
+          - Required: `users`, `sessions`, `bounceRate`, `conversions`
+          - Optional: 20+ additional metrics like `newUsers`, `engagementRate`, etc.
+          - `topLandingPages` - Array of top pages with metrics
+          - `deviceBreakdown` - Mobile/desktop/tablet usage
+        - `pageSpeedData` (object | null) - Performance metrics:
+          - `mobile`, `desktop` - Scores and Core Web Vitals
+          - `opportunities` - Optimization suggestions
+        
+        **Custom Configuration:**
+        - `selectedMetrics` (array) - Metric IDs for custom reports
+        - `customFields` (array) - Custom content sections
+        
+        **Branding:**
+        - `agencyName` (string) - Agency display name
+        - `agencyLogo` (string) - Logo URL
+        
+        **AI Insights:**
+        - `insights` (array) - AI-generated insight objects from Claude
+        
+        **Metadata:**
+        - `dataSourceInfo` (object) - Information about included data:
+          - `hasGSC`, `hasGA4`, `hasPageSpeed` - Boolean flags
+          - `metricsCount` - Number of GA4 metrics included
+          - `aiInsightsAvailable` - Whether AI insights were generated
+      </Expandable>
+    </ResponseField>
+    
+    <ResponseField name="pdfUrl" type="string">
+      Public URL to the generated PDF file in Vercel Blob storage. Use this URL to download or display the PDF.
+    </ResponseField>
+    
+    <ResponseField name="pdfSize" type="number">
+      Size of the PDF file in bytes. Typical range: 150,000 - 2,000,000 bytes (150KB - 2MB).
+    </ResponseField>
+    
+    <ResponseField name="processingStartedAt" type="string">
+      ISO 8601 timestamp when report generation started.
+    </ResponseField>
+    
+    <ResponseField name="processingCompletedAt" type="string">
+      ISO 8601 timestamp when report generation completed successfully.
+    </ResponseField>
+    
+    <ResponseField name="generationTimeMs" type="number">
+      Total processing time in milliseconds. Typical range: 15,000 - 45,000ms (15-45 seconds).
+    </ResponseField>
+    
+    <ResponseField name="errorMessage" type="string">
+      Error description if status is FAILED, otherwise null.
+    </ResponseField>
+    
+    <ResponseField name="createdAt" type="string">
+      ISO 8601 timestamp when the report record was created in the database.
+    </ResponseField>
+    
+    <ResponseField name="updatedAt" type="string">
+      ISO 8601 timestamp of the last update to the report record.
+    </ResponseField>
+    
+    <ResponseField name="clientId" type="string">
+      Foreign key reference to the associated client (CUID).
+    </ResponseField>
+    
+    <ResponseField name="userId" type="string">
+      Foreign key reference to the user who generated the report (CUID).
+    </ResponseField>
+    
+    <ResponseField name="aiInsights" type="array">
+      Array of AI-generated insight objects from Claude API:
+      ```typescript
+      {
+        id: string
+        title: string
+        description: string
+        priority: 'high' | 'medium' | 'low'
+        category: 'keyword' | 'technical' | 'content' | 'performance'
+        recommendations: string[]
+      }
+      ```
+    </ResponseField>
+    
+    <ResponseField name="aiInsightsSource" type="enum">
+      Source of the insights:
+      - `ai` - Generated by Claude API
+      - `rule-based` - Generated by fallback rule-based system
+      - `fallback` - Default insights (AI service unavailable)
+    </ResponseField>
+    
+    <ResponseField name="aiInsightsGeneratedAt" type="string">
+      ISO 8601 timestamp when AI insights were generated.
+    </ResponseField>
+    
+    <ResponseField name="aiTokensUsed" type="number">
+      Token count consumed during AI generation. Used for cost tracking and billing.
+    </ResponseField>
+    
+    <ResponseField name="aiCostUsd" type="number">
+      Estimated cost in USD for AI generation based on Claude API pricing.
+    </ResponseField>
+    
+    <ResponseField name="aiError" type="string">
+      Error message if AI insights generation failed, otherwise null.
+    </ResponseField>
+    
+    <ResponseField name="client" type="object">
+      Associated client information with full details:
+      ```typescript
+      {
+        id: string
+        name: string
+        domain: string
+        contactEmail: string | null
+        contactName: string | null
+      }
+      ```
+    </ResponseField>
+    
+    <ResponseField name="user" type="object">
+      Report owner (agency) information with branding details:
+      ```typescript
+      {
+        id: string
+        name: string | null
+        email: string
+        companyName: string | null
+        primaryColor: string
+        logo: string | null
+      }
+      ```
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Error Responses
+
+<ResponseExample>
+```json 401 Unauthorized
+{
+  "error": "Unauthorized"
+}
+```
+
+```json 404 Not Found
+{
+  "error": "Report not found or unauthorized"
+}
+```
+
+```json 500 Internal Server Error
+{
+  "error": "Failed to fetch report"
+}
+```
+</ResponseExample>
+
+## Example Request
+
+```bash
+curl -X GET https://your-domain.com/api/reports/clxreport123456 \
+  -H "Cookie: next-auth.session-token=..."
+```
+
+## Example Response
+
+```json
+{
+  "id": "clxreport123456",
+  "title": "Standard Report - Acme Corp (2024-01-01 to 2024-01-31)",
+  "status": "COMPLETED",
+  "data": {
+    "clientName": "Acme Corp",
+    "startDate": "2024-01-01",
+    "endDate": "2024-01-31",
+    "reportType": "standard",
+    "generatedAt": "2024-02-01T10:25:15.123Z",
+    "gscData": {
+      "clicks": 12500,
+      "impressions": 450000,
+      "ctr": 0.0278,
+      "position": 8.5,
+      "topQueries": [
+        {
+          "query": "seo services",
+          "clicks": 1250,
+          "impressions": 45000,
+          "ctr": 0.0278,
+          "position": 5.2
+        },
+        {
+          "query": "digital marketing agency",
+          "clicks": 980,
+          "impressions": 38000,
+          "ctr": 0.0258,
+          "position": 6.8
+        }
+      ],
+      "dailyData": [
+        {
+          "date": "2024-01-01",
+          "clicks": 400,
+          "impressions": 15000,
+          "ctr": 0.0267,
+          "position": 8.7
+        },
+        {
+          "date": "2024-01-02",
+          "clicks": 425,
+          "impressions": 15500,
+          "ctr": 0.0274,
+          "position": 8.4
+        }
+      ]
+    },
+    "ga4Data": {
+      "users": 8500,
+      "sessions": 12000,
+      "bounceRate": 0.42,
+      "conversions": 150,
+      "newUsers": 5200,
+      "engagementRate": 0.68,
+      "avgSessionDuration": 185,
+      "pagesPerSession": 3.2,
+      "organicTraffic": 7200,
+      "directTraffic": 2100,
+      "referralTraffic": 1800,
+      "socialTraffic": 900,
+      "topLandingPages": [
+        {
+          "page": "/services",
+          "sessions": 3200,
+          "users": 2800,
+          "bounceRate": 0.35,
+          "conversions": 45
+        },
+        {
+          "page": "/blog/seo-guide",
+          "sessions": 2100,
+          "users": 1950,
+          "bounceRate": 0.28,
+          "conversions": 18
+        }
+      ],
+      "deviceBreakdown": {
+        "mobile": 5100,
+        "desktop": 2800,
+        "tablet": 600
+      }
+    },
+    "pageSpeedData": {
+      "mobile": {
+        "score": 78,
+        "lcp": 2.4,
+        "fid": 85,
+        "cls": 0.08
+      },
+      "desktop": {
+        "score": 92,
+        "lcp": 1.2,
+        "fid": 45,
+        "cls": 0.03
+      },
+      "opportunities": [
+        {
+          "title": "Reduce unused JavaScript",
+          "description": "Reduce unused JavaScript and defer loading scripts until they are required.",
+          "displayValue": "Potential savings of 125 KiB"
+        },
+        {
+          "title": "Properly size images",
+          "description": "Serve images that are appropriately-sized to save cellular data and improve load time.",
+          "displayValue": "Potential savings of 89 KiB"
+        }
+      ],
+      "fetchedAt": "2024-02-01T10:25:18.000Z"
+    },
+    "insights": [
+      {
+        "id": "insight-1",
+        "title": "Strong Search Visibility Growth",
+        "description": "Your average search position improved by 15% this month, with particularly strong performance in long-tail keywords. The CTR increase of 12% indicates that your meta descriptions are resonating well with searchers.",
+        "priority": "high",
+        "category": "performance",
+        "recommendations": [
+          "Continue optimizing for long-tail keywords that are currently ranking in positions 6-10",
+          "Create more content targeting related search queries to capture additional traffic",
+          "Monitor and replicate the meta description patterns that are driving high CTR"
+        ]
+      },
+      {
+        "id": "insight-2",
+        "title": "Mobile Performance Optimization Needed",
+        "description": "Your mobile PageSpeed score of 78 is good, but there's room for improvement. The LCP of 2.4s is approaching the threshold, and mobile users represent 60% of your traffic.",
+        "priority": "medium",
+        "category": "technical",
+        "recommendations": [
+          "Reduce unused JavaScript to improve initial load time by ~125 KiB",
+          "Properly size images for mobile viewports to save ~89 KiB",
+          "Consider implementing lazy loading for below-the-fold images"
+        ]
+      }
+    ],
+    "agencyName": "Digital Marketing Pro",
+    "agencyLogo": "https://blob-storage.com/logos/dmp-logo.png",
+    "dataSourceInfo": {
+      "hasGSC": true,
+      "hasGA4": true,
+      "hasPageSpeed": true,
+      "pageSpeedFromRequest": true,
+      "metricsCount": 15,
+      "hasCustomFields": false,
+      "selectedMetricsCount": 0,
+      "aiInsightsAvailable": true
+    }
+  },
+  "pdfUrl": "https://your-blob-storage.com/reports/acme-corp_standard_2024-01-01_2024-01-31_1706789123456.pdf",
+  "pdfSize": 524288,
+  "processingStartedAt": "2024-02-01T10:25:15.123Z",
+  "processingCompletedAt": "2024-02-01T10:25:47.456Z",
+  "generationTimeMs": 32333,
+  "errorMessage": null,
+  "createdAt": "2024-02-01T10:25:15.123Z",
+  "updatedAt": "2024-02-01T10:25:47.456Z",
+  "clientId": "clx1234567890",
+  "userId": "clxuser123",
+  "aiInsights": [
+    {
+      "id": "insight-1",
+      "title": "Strong Search Visibility Growth",
+      "description": "Your average search position improved by 15% this month.",
+      "priority": "high",
+      "category": "performance",
+      "recommendations": [
+        "Continue optimizing for long-tail keywords",
+        "Create more content targeting related queries"
+      ]
+    },
+    {
+      "id": "insight-2",
+      "title": "Mobile Performance Optimization Needed",
+      "description": "Mobile PageSpeed score of 78 has room for improvement.",
+      "priority": "medium",
+      "category": "technical",
+      "recommendations": [
+        "Reduce unused JavaScript",
+        "Properly size images for mobile"
+      ]
+    }
+  ],
+  "aiInsightsSource": "ai",
+  "aiInsightsGeneratedAt": "2024-02-01T10:25:20.789Z",
+  "aiTokensUsed": 2000,
+  "aiCostUsd": 0.012,
+  "aiError": null,
+  "client": {
+    "id": "clx1234567890",
+    "name": "Acme Corp",
+    "domain": "acmecorp.com",
+    "contactEmail": "contact@acmecorp.com",
+    "contactName": "John Smith"
+  },
+  "user": {
+    "id": "clxuser123",
+    "name": "Jane Doe",
+    "email": "jane@digitalmarketingpro.com",
+    "companyName": "Digital Marketing Pro",
+    "primaryColor": "#3B82F6",
+    "logo": "https://blob-storage.com/logos/dmp-logo.png"
+  }
+}
+```
+
+## Use Cases
+
+### Display Report Details
+Fetch complete report information for display on a report detail page, including all analytics data and AI insights.
+
+### Download PDF
+Use the `pdfUrl` field to provide a download link or embed the PDF in an iframe.
+
+### Regenerate Report
+Extract the `data` field to regenerate a report with the same configuration and parameters.
+
+### Performance Analysis
+Analyze `generationTimeMs`, `pdfSize`, and AI cost metrics for optimization and billing.
+
+### Troubleshooting
+Check `status`, `errorMessage`, and `aiError` fields to diagnose failed report generations.
+
+### Client Reporting
+Combine report data with client and user information for comprehensive client dashboards.
+
+## Security
+
+This endpoint implements ownership verification:
+1. Requires valid authentication session
+2. Verifies that the report belongs to the authenticated user
+3. Returns 404 if report doesn't exist OR doesn't belong to the user (preventing enumeration)
+
+## Data Persistence
+
+All report data is stored in PostgreSQL with:
+- **JSONB storage** for flexible `data` field
+- **Indexed queries** on `userId`, `clientId`, and `status`
+- **Cascade deletion** when user or client is deleted
+- **Automatic timestamps** for `createdAt` and `updatedAt`
+
+## Related Endpoints
+
+- [Generate Report](/api/reports/generate) - Create a new report
+- [List Reports](/api/reports/list) - Get all reports for a user
+- [Report Status](/api/reports/status) - Check processing status
+- [Delete Report](#delete-report) - Remove a report (see below)
+
+---
+
+## Delete Report
+
+### Endpoint
+
+```
+DELETE /api/reports/{id}
+```
+
+### Description
+
+Permanently deletes a report and updates the associated client's report count.
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  The unique identifier of the report to delete.
+</ParamField>
+
+### Response
+
+<ResponseExample>
+```json 200 OK
+{
+  "success": true
+}
+```
+
+```json 401 Unauthorized
+{
+  "error": "Unauthorized"
+}
+```
+
+```json 404 Not Found
+{
+  "error": "Report not found or unauthorized"
+}
+```
+
+```json 500 Internal Server Error
+{
+  "error": "Failed to delete report"
+}
+```
+</ResponseExample>
+
+### Example Request
+
+```bash
+curl -X DELETE https://your-domain.com/api/reports/clxreport123456 \
+  -H "Cookie: next-auth.session-token=..."
+```
+
+### Behavior
+
+1. Verifies report exists and belongs to authenticated user
+2. Deletes the report record from database
+3. Decrements the client's `totalReportsGenerated` count
+4. Does NOT delete the PDF file from Vercel Blob (manual cleanup required)
+
+**Note:** Consider implementing blob storage cleanup in a background job for production use.

@@ -1,0 +1,479 @@
+---
+title: 'Subscription Management'
+description: 'Upgrade your plan, manage billing, and track usage quotas'
+---
+
+## Overview
+
+Reportr uses **PayPal subscriptions** for billing. Your subscription includes:
+- Monthly report quota
+- Client limit
+- White-label branding access (on eligible plans)
+- 14-day free trial for new paid subscribers
+
+This guide covers upgrading, canceling, and managing your subscription.
+
+## Available Plans
+
+<CardGroup cols={2}>
+  <Card title="Free" icon="gift">
+    **$0/month**
+    
+    - 1 client
+    - 5 reports/month
+    - ❌ No white-label
+    - Perfect for testing
+  </Card>
+  
+  <Card title="Starter" icon="rocket">
+    **$29/month**
+    
+    - 5 clients
+    - 25 reports/month
+    - ❌ White-label: +$20/mo
+    - Great for freelancers
+  </Card>
+  
+  <Card title="Professional" icon="briefcase">
+    **$79/month**
+    
+    - 15 clients
+    - 75 reports/month
+    - ✅ White-label included
+    - For small agencies
+  </Card>
+  
+  <Card title="Agency" icon="building">
+    **$199/month**
+    
+    - 50 clients
+    - 250 reports/month
+    - ✅ White-label included
+    - For large agencies
+  </Card>
+</CardGroup>
+
+Plan limits are defined in `/workspace/source/src/lib/plan-limits.ts:15-43`
+
+## Billing Cycle System
+
+Reportr uses **30-day rolling billing cycles** instead of calendar months:
+
+- **Cycle start**: Date you subscribed or upgraded
+- **Cycle end**: 30 days from cycle start
+- **Usage resets**: Automatically when cycle ends
+- **Renewal**: Charges on cycle end date
+
+**Example:**
+```
+Subscribed: February 5, 2026
+Cycle 1: Feb 5 - Mar 7, 2026
+Cycle 2: Mar 7 - Apr 6, 2026
+Cycle 3: Apr 6 - May 6, 2026
+```
+
+<Note>
+  The billing cycle system automatically resets your report quota every 30 days. See implementation in `/workspace/source/src/lib/billing-cycle.ts`
+</Note>
+
+## Checking Your Usage
+
+### Dashboard Overview
+
+Your dashboard shows current usage:
+
+```
+📊 Reports: 12 / 25 used (48%)
+   Resets in 18 days
+
+👥 Clients: 3 / 5 used (60%)
+   2 clients remaining
+```
+
+### Via API
+
+Get detailed usage stats:
+
+**Endpoint**: `GET /api/user/billing`
+
+**Response**:
+```json
+{
+  "subscription": {
+    "plan": "STARTER",
+    "status": "active",
+    "billingCycleStart": "2026-02-05T00:00:00Z",
+    "billingCycleEnd": "2026-03-07T00:00:00Z",
+    "paypalSubscriptionId": "I-ABC123XYZ"
+  },
+  "payments": [
+    {
+      "id": "...",
+      "amount": 29.00,
+      "currency": "USD",
+      "status": "COMPLETED",
+      "plan": "STARTER",
+      "createdAt": "2026-02-05T10:30:00Z"
+    }
+  ]
+}
+```
+
+See implementation in `/workspace/source/src/app/api/user/billing/route.ts`
+
+## Upgrading Your Plan
+
+<Steps>
+  <Step title="Access upgrade options">
+    Click **Upgrade** from:
+    - Dashboard header (if near quota)
+    - Settings → Billing
+    - Modal when you hit plan limits
+  </Step>
+
+  <Step title="Choose your plan">
+    Select the plan tier that fits your needs:
+    - Compare client and report limits
+    - Check white-label availability
+    - Review pricing
+  </Step>
+
+  <Step title="Start trial or subscribe">
+    New subscribers get options:
+    - **Start 14-day trial** - Free trial, then $X/mo
+    - **Subscribe now** - Start paying immediately (no trial)
+    
+    <Tip>
+      Trial users get full access to their plan tier, including white-label branding for testing.
+    </Tip>
+  </Step>
+
+  <Step title="Complete PayPal checkout">
+    1. Click **Subscribe** button
+    2. Redirected to PayPal
+    3. Sign in to PayPal or pay as guest
+    4. Approve subscription
+    5. Redirected back to Reportr
+  </Step>
+
+  <Step title="Verify upgrade">
+    After successful payment:
+    - ✅ Plan updates immediately
+    - ✅ New quotas apply
+    - ✅ White-label unlocks (if included)
+    - 📧 Confirmation email sent
+  </Step>
+</Steps>
+
+## PayPal Plan IDs
+
+Reportr uses different PayPal plans for trials vs. direct subscriptions (see `/workspace/source/.env.example:45-59`):
+
+| Plan | Trial Plan ID | Direct Plan ID |
+|------|--------------|----------------|
+| Starter | `PAYPAL_STARTER_TRIAL_PLAN_ID` | `PAYPAL_STARTER_DIRECT_PLAN_ID` |
+| Professional | `PAYPAL_PRO_TRIAL_PLAN_ID` | `PAYPAL_PRO_DIRECT_PLAN_ID` |
+| Agency | `PAYPAL_AGENCY_TRIAL_PLAN_ID` | `PAYPAL_AGENCY_DIRECT_PLAN_ID` |
+
+<Note>
+  Trial plans charge $0 for the first 14 days, then automatically convert to paid subscription. Direct plans charge immediately.
+</Note>
+
+## Trial Period Details
+
+### How Trials Work
+
+1. **Duration**: 14 days from signup
+2. **Full access**: Complete plan features including white-label
+3. **No payment**: Credit card required, but not charged until trial ends
+4. **Auto-conversion**: Becomes paid subscription after 14 days
+5. **Cancel anytime**: Cancel during trial for no charges
+
+### Trial Tracking
+
+Trial data is stored in User model (see `/workspace/source/prisma/schema.prisma:36-40`):
+
+```prisma
+trialStartDate    DateTime?
+trialEndDate      DateTime?
+trialUsed         Boolean @default(false)
+trialType         String?  // 'EMAIL' | 'PAYPAL'
+signupFlow        String?  // 'FREE' | 'PAID_TRIAL'
+```
+
+### What Happens When Trial Expires?
+
+When your trial ends:
+
+1. **Auto-charge**: PayPal charges your payment method
+2. **Plan continues**: No interruption in service
+3. **Status update**: `subscriptionStatus` changes to `"active"`
+4. **Email notification**: Confirmation of first payment
+
+If payment fails:
+- PayPal retries charge
+- Account may be downgraded to Free plan
+- Email notification sent
+
+## Canceling Your Subscription
+
+<Warning>
+  Canceling your subscription will downgrade you to the Free plan at the end of your billing cycle.
+</Warning>
+
+<Steps>
+  <Step title="Navigate to billing settings">
+    Go to **Settings** → **Billing** → **Manage Subscription**
+  </Step>
+
+  <Step title="Click Cancel Subscription">
+    Click the **Cancel Subscription** button at the bottom of the page.
+  </Step>
+
+  <Step title="Confirm cancellation">
+    A modal appears:
+    - Shows your current plan
+    - Explains when access ends
+    - Confirms downgrade to Free plan
+    
+    Click **Confirm Cancellation** to proceed.
+  </Step>
+
+  <Step title="Cancellation processed">
+    On success:
+    - ✅ PayPal subscription canceled
+    - ✅ Access continues until cycle end
+    - ✅ Subscription marked as `"cancelled"`
+    - 📧 Confirmation email sent
+  </Step>
+</Steps>
+
+### What Happens After Cancellation?
+
+When you cancel (see `/workspace/source/src/app/api/subscription/cancel/route.ts:84-92`):
+
+1. **Immediate updates**:
+   ```javascript
+   subscriptionStatus: 'cancelled'
+   cancelledAt: new Date()
+   subscriptionEndDate: billingCycleEnd
+   ```
+
+2. **Retained access**:
+   - Keep current plan features until `subscriptionEndDate`
+   - Can still generate reports and add clients
+   - White-label remains active (if applicable)
+
+3. **At cycle end**:
+   - Plan downgrades to Free
+   - Client limit reduces to 1
+   - Report quota reduces to 5/month
+   - White-label disabled
+   - Existing clients/reports remain but read-only if over Free limits
+
+<Tip>
+  You can re-subscribe at any time before or after the cycle ends.
+</Tip>
+
+## Managing PayPal Subscription
+
+You can also manage your subscription directly in PayPal:
+
+1. Log in to [PayPal](https://www.paypal.com)
+2. Go to **Settings** → **Payments** → **Manage automatic payments**
+3. Find "Reportr" subscription
+4. View details, update payment method, or cancel
+
+<Note>
+  Changes made in PayPal sync to Reportr via webhooks. Allow up to 5 minutes for updates to reflect.
+</Note>
+
+## White-Label Add-On (Starter Plan)
+
+Starter plan users can add white-label branding for **$20/month**:
+
+### Adding White-Label
+
+<Steps>
+  <Step title="Go to Branding Settings">
+    Navigate to **Settings** → **Branding**
+  </Step>
+
+  <Step title="Click Add White-Label">
+    You'll see a prompt: "White-label branding is available on Professional and Agency plans. You can also access it during your trial period."
+    
+    Click **Add White-Label (+$20/mo)**
+  </Step>
+
+  <Step title="Complete PayPal checkout">
+    Redirected to PayPal to approve the add-on subscription.
+  </Step>
+
+  <Step title="Verify activation">
+    After payment:
+    - `whiteLabelEnabled` set to `true`
+    - Branding settings become editable
+    - Total billing: $29 (Starter) + $20 (White-label) = $49/mo
+  </Step>
+</Steps>
+
+<Tip>
+  Alternatively, upgrade to Professional plan ($79/mo) which includes white-label plus higher limits.
+</Tip>
+
+## Billing Cycle Auto-Reset
+
+Reportr automatically manages billing cycles (see `/workspace/source/src/lib/billing-cycle.ts:20-60`):
+
+### Reset Logic
+
+```typescript
+export async function checkAndResetBillingCycle(userId: string) {
+  const now = new Date();
+  
+  // Check if cycle needs reset
+  if (!user.billingCycleEnd || now > user.billingCycleEnd) {
+    const newCycleStart = now;
+    const newCycleEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        billingCycleStart: newCycleStart,
+        billingCycleEnd: newCycleEnd,
+      }
+    });
+  }
+}
+```
+
+This runs automatically:
+- When checking report quota
+- When viewing billing info
+- When generating reports
+
+### Manual Cycle Reset
+
+Admins can manually reset cycles if needed:
+
+```typescript
+import { initializeBillingCycle } from '@/lib/billing-cycle';
+
+await initializeBillingCycle(userId);
+```
+
+## Troubleshooting
+
+### Subscription Shows as "Inactive"
+
+**Problem:** Dashboard shows inactive subscription despite having paid
+
+**Possible causes:**
+
+1. **PayPal payment pending**: Check PayPal for payment status
+2. **Webhook delay**: Wait 5 minutes for PayPal webhook to process
+3. **Subscription ID mismatch**: Verify `paypalSubscriptionId` in database
+
+**Solution:**
+- Refresh page after 5 minutes
+- Check PayPal for subscription status
+- Contact support with PayPal subscription ID
+
+### Cannot Add Clients Despite Upgrade
+
+**Problem:** Client limit still shows old plan limits
+
+**Solution:**
+1. Verify `plan` field updated in database
+2. Log out and log back in to refresh session
+3. Check `canAddClient()` function is using correct plan limits
+
+See limit check in `/workspace/source/src/lib/plan-limits.ts:49-83`
+
+### Report Quota Not Resetting
+
+**Problem:** Still showing old quota despite cycle ending
+
+**Solution:**
+1. Check `billingCycleEnd` date in database
+2. Verify auto-reset logic ran (check console logs)
+3. Manually trigger reset:
+   ```typescript
+   await checkAndResetBillingCycle(userId);
+   ```
+
+See `/workspace/source/src/lib/billing-cycle.ts:20-60`
+
+### PayPal Subscription Not Found
+
+**Problem:** Error when canceling: "Subscription not found in PayPal"
+
+**Possible causes:**
+- Subscription already canceled in PayPal
+- Subscription ID invalid or expired
+- PayPal account access revoked
+
+**Solution:**
+Reportr automatically updates database to mark subscription as inactive. Verify in Settings → Billing.
+
+See error handling in `/workspace/source/src/app/api/subscription/cancel/route.ts:108-129`
+
+### Trial Not Applying
+
+**Problem:** Charged immediately instead of starting trial
+
+**Possible causes:**
+1. **Direct plan used**: Ensure using trial plan ID in checkout
+2. **Trial already used**: Users can only use trial once
+3. **Incorrect plan configuration**: Check PayPal plan settings
+
+**Solution:**
+- Verify `trialUsed: false` in database
+- Check correct plan ID used: `PAYPAL_*_TRIAL_PLAN_ID`
+- Contact support for trial credit if incorrectly charged
+
+## Payment History
+
+View your payment history:
+
+**Location**: Settings → Billing → Payment History
+
+**Shows:**
+- Payment date and time
+- Amount and currency
+- PayPal order ID
+- Plan tier
+- Payment status
+
+Data comes from `payments` table (see `/workspace/source/prisma/schema.prisma:53-71`)
+
+## Database Schema Reference
+
+Subscription data in User model (from `/workspace/source/prisma/schema.prisma:11-50`):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `plan` | Enum | FREE, STARTER, PROFESSIONAL, AGENCY |
+| `planExpires` | DateTime? | When plan access ends (for trials) |
+| `billingCycleStart` | DateTime | Start of current 30-day cycle |
+| `billingCycleEnd` | DateTime? | End of current cycle |
+| `paypalCustomerId` | String? | PayPal customer identifier |
+| `paypalSubscriptionId` | String? | PayPal subscription identifier |
+| `subscriptionStatus` | String | "free", "active", "cancelled", "inactive" |
+| `cancelledAt` | DateTime? | When subscription was cancelled |
+| `subscriptionEndDate` | DateTime? | When access actually ends after cancellation |
+| `trialStartDate` | DateTime? | Trial start timestamp |
+| `trialEndDate` | DateTime? | Trial end timestamp |
+| `trialUsed` | Boolean | Whether user has used their free trial |
+| `whiteLabelEnabled` | Boolean | White-label access flag |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Customize Branding" icon="palette" href="/guides/customizing-branding">
+    Set up white-label branding (if available on your plan)
+  </Card>
+  <Card title="Generate Reports" icon="file-chart-column" href="/guides/generating-reports">
+    Start using your upgraded plan to create reports
+  </Card>
+</CardGroup>

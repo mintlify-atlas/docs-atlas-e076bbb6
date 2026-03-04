@@ -1,0 +1,658 @@
+---
+title: Email Sequences System
+description: Complete reference for automated email campaigns, user onboarding, and trial management
+---
+
+# Email Sequences System
+
+Reportr's email sequences system manages automated email campaigns for user onboarding, trial reminders, and engagement. It ensures users receive timely, relevant communications without duplicates.
+
+## Architecture Overview
+
+### Core Module
+
+**Location:** `src/lib/email-sequences.ts`
+
+**Purpose:** Manages triggered email campaigns with deduplication and time-based delivery
+
+**Key Components:**
+- Email log tracking (prevents duplicates)
+- Time window matching (finds eligible users)
+- User eligibility queries (identifies recipients)
+
+### Database Schema
+
+**EmailLog Model:**
+
+```prisma
+model EmailLog {
+  id         String    @id @default(cuid())
+  userId     String
+  emailType  String    // e.g., "TRIAL_DAY_3", "ONBOARDING_WELCOME"
+  sentAt     DateTime  @default(now())
+  metadata   Json?     // Additional context
+  
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, emailType])
+  @@index([emailType, sentAt])
+}
+```
+
+**Key Features:**
+- `@@unique([userId, emailType])` - Prevents duplicate emails
+- Race condition safe with database constraints
+
+## Core Functions
+
+### `hasEmailBeenSent()`
+
+Checks if a specific email has already been sent to a user.
+
+**Location:** `src/lib/email-sequences.ts:7`
+
+```typescript:src/lib/email-sequences.ts
+export async function hasEmailBeenSent(
+  userId: string,
+  emailType: EmailType
+): Promise<boolean> {
+  const existing = await prisma.emailLog.findUnique({
+    where: {
+      userId_emailType: {
+        userId,
+        emailType,
+      },
+    },
+  });
+  return !!existing;
+}
+```
+
+**Usage Example:**
+
+```typescript
+if (await hasEmailBeenSent(user.id, 'TRIAL_DAY_3')) {
+  console.log('Email already sent, skipping');
+  return;
+}
+```
+
+### `logEmailSent()`
+
+Records that an email was sent, preventing future duplicates.
+
+**Location:** `src/lib/email-sequences.ts:23`
+
+```typescript:src/lib/email-sequences.ts
+export async function logEmailSent(
+  userId: string,
+  emailType: EmailType,
+  metadata?: Record<string, any>
+): Promise<void> {
+  try {
+    await prisma.emailLog.create({
+      data: {
+        userId,
+        emailType,
+        metadata,
+      },
+    });
+  } catch (error: unknown) {
+    // If unique constraint violation, email was already logged (race condition safe)
+    const prismaError = error as { code?: string };
+    if (prismaError.code === 'P2002') {
+      console.log(`Email ${emailType} already sent to user ${userId}`);
+      return;
+    }
+    throw error;
+  }
+}
+```
+
+**Race Condition Protection:**
+- Multiple processes can call this simultaneously
+- Database unique constraint ensures only one record created
+- Silently succeeds if email already logged
+
+**Usage Example:**
+
+```typescript
+await sendEmail(user.email, 'trial-reminder', templateData);
+await logEmailSent(user.id, 'TRIAL_DAY_3', {
+  trialEndsAt: user.trialEndsAt,
+  sentFrom: 'cron-job'
+});
+```
+
+### `getUserEmailHistory()`
+
+Retrieves all emails sent to a specific user.
+
+**Location:** `src/lib/email-sequences.ts:52`
+
+```typescript:src/lib/email-sequences.ts
+export async function getUserEmailHistory(userId: string) {
+  return prisma.emailLog.findMany({
+    where: { userId },
+    orderBy: { sentAt: 'desc' },
+  });
+}
+```
+
+**Returns:**
+
+```typescript
+[
+  {
+    id: "clx...",
+    userId: "user_123",
+    emailType: "TRIAL_DAY_3",
+    sentAt: Date,
+    metadata: { trialEndsAt: "2024-03-15" }
+  },
+  {
+    id: "clx...",
+    emailType: "ONBOARDING_WELCOME",
+    sentAt: Date,
+    metadata: null
+  }
+]
+```
+
+**Usage:** User profile pages, admin dashboards, debugging
+
+### `isDateInWindow()`
+
+Checks if a date falls within today's processing window.
+
+**Location:** `src/lib/email-sequences.ts:62`
+
+```typescript:src/lib/email-sequences.ts
+export function isDateInWindow(
+  targetDate: Date,
+  daysOffset: number,
+  windowHours = 24
+): boolean {
+  const now = new Date();
+  
+  // Calculate the target date with offset
+  const checkDate = new Date(targetDate);
+  checkDate.setDate(checkDate.getDate() + daysOffset);
+  
+  // Set to start of day UTC
+  checkDate.setUTCHours(0, 0, 0, 0);
+  
+  const startOfToday = new Date(now);
+  startOfToday.setUTCHours(0, 0, 0, 0);
+  
+  const endOfWindow = new Date(startOfToday);
+  endOfWindow.setUTCHours(windowHours, 0, 0, 0);
+  
+  return checkDate >= startOfToday && checkDate < endOfWindow;
+}
+```
+
+**Parameters:**
+- `targetDate` - Reference date (e.g., user signup date)
+- `daysOffset` - Days to add to target date (e.g., 3 for "3 days after signup")
+- `windowHours` - Processing window duration (default 24 hours)
+
+**Example:**
+
+```typescript
+const signupDate = new Date('2024-03-01');
+const now = new Date('2024-03-04');
+
+// Check if user signed up 3 days ago
+isDateInWindow(signupDate, 3, 24); // true if now is March 4
+isDateInWindow(signupDate, 7, 24); // false (would be March 8)
+```
+
+### `findUsersForTimeBasedEmail()`
+
+Finds all users eligible for a specific time-based email.
+
+**Location:** `src/lib/email-sequences.ts:89`
+
+```typescript:src/lib/email-sequences.ts
+export async function findUsersForTimeBasedEmail(
+  emailType: EmailType,
+  daysOffset: number,
+  referenceField: 'createdAt' | 'trialEndsAt'
+): Promise<Array<{ id: string; email: string; name: string | null }>> {
+  const now = new Date();
+  
+  // Calculate the date range for users who should receive this email today
+  const targetDate = new Date(now);
+  targetDate.setDate(targetDate.getDate() - daysOffset);
+  targetDate.setUTCHours(0, 0, 0, 0);
+  
+  const targetDateEnd = new Date(targetDate);
+  targetDateEnd.setUTCHours(23, 59, 59, 999);
+  
+  // Find users where:
+  // 1. Reference date matches our target window
+  // 2. They haven't received this email yet
+  const users = await prisma.user.findMany({
+    where: {
+      [referenceField]: {
+        gte: targetDate,
+        lte: targetDateEnd,
+      },
+      // Exclude users who already received this email
+      emailLogs: {
+        none: {
+          emailType,
+        },
+      },
+    },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+    },
+  });
+  
+  return users;
+}
+```
+
+**Usage Example:**
+
+```typescript
+// Find users who signed up exactly 3 days ago and haven't received welcome email
+const users = await findUsersForTimeBasedEmail(
+  'ONBOARDING_DAY_3',
+  3,
+  'createdAt'
+);
+
+for (const user of users) {
+  await sendOnboardingEmail(user);
+  await logEmailSent(user.id, 'ONBOARDING_DAY_3');
+}
+```
+
+## Email Types
+
+### Type Definitions
+
+**Location:** `src/lib/email-types.ts`
+
+```typescript
+export const EMAIL_TYPES = {
+  // Onboarding sequence
+  ONBOARDING_WELCOME: 'ONBOARDING_WELCOME',           // Day 0: Welcome email
+  ONBOARDING_DAY_3: 'ONBOARDING_DAY_3',               // Day 3: Getting started tips
+  ONBOARDING_DAY_7: 'ONBOARDING_DAY_7',               // Day 7: Feature highlights
+  
+  // Trial management
+  TRIAL_START: 'TRIAL_START',                         // Trial activation
+  TRIAL_DAY_3: 'TRIAL_DAY_3',                         // 3 days into trial
+  TRIAL_DAY_7: 'TRIAL_DAY_7',                         // 7 days into trial
+  TRIAL_DAY_10: 'TRIAL_DAY_10',                       // 3 days before end
+  TRIAL_DAY_12: 'TRIAL_DAY_12',                       // 1 day before end
+  TRIAL_ENDED: 'TRIAL_ENDED',                         // Trial expired
+  
+  // Usage alerts
+  USAGE_80_PERCENT: 'USAGE_80_PERCENT',               // 80% of limit used
+  USAGE_100_PERCENT: 'USAGE_100_PERCENT',             // Limit reached
+  
+  // Engagement
+  INACTIVE_30_DAYS: 'INACTIVE_30_DAYS',               // No activity for 30 days
+  FIRST_REPORT_COMPLETED: 'FIRST_REPORT_COMPLETED',   // Celebrate first report
+} as const;
+
+export type EmailType = typeof EMAIL_TYPES[keyof typeof EMAIL_TYPES];
+```
+
+## Email Sequences
+
+### Onboarding Sequence
+
+**Goal:** Help new users get started and understand features
+
+```typescript
+// Day 0: Welcome Email
+// Trigger: User signs up
+{
+  emailType: 'ONBOARDING_WELCOME',
+  trigger: 'immediate',
+  subject: 'Welcome to Reportr',
+  content: [
+    'Thank you for signing up',
+    'Quick start guide',
+    'Connect Google APIs',
+    'Generate first report'
+  ]
+}
+
+// Day 3: Getting Started Tips
+// Trigger: 3 days after signup
+{
+  emailType: 'ONBOARDING_DAY_3',
+  trigger: 'createdAt + 3 days',
+  subject: 'Tips for your first report',
+  content: [
+    'How to connect Google Search Console',
+    'Understanding your metrics',
+    'Video tutorial link'
+  ]
+}
+
+// Day 7: Feature Highlights
+// Trigger: 7 days after signup
+{
+  emailType: 'ONBOARDING_DAY_7',
+  trigger: 'createdAt + 7 days',
+  subject: 'Unlock the full power of Reportr',
+  content: [
+    'White-label branding',
+    'AI-powered insights',
+    'Automated report scheduling'
+  ]
+}
+```
+
+### Trial Management Sequence
+
+**Goal:** Encourage trial users to upgrade before expiration
+
+```typescript
+// Day 3: Early Engagement
+{
+  emailType: 'TRIAL_DAY_3',
+  trigger: 'trialStartedAt + 3 days',
+  subject: 'Making the most of your trial',
+  content: [
+    'Trial progress: 3 of 14 days',
+    'Have you tried these features?',
+    'Book a demo call'
+  ]
+}
+
+// Day 10: Upgrade Reminder
+{
+  emailType: 'TRIAL_DAY_10',
+  trigger: 'trialEndsAt - 3 days',
+  subject: 'Your trial ends in 3 days',
+  content: [
+    '⏰ Only 3 days left',
+    'Choose your plan',
+    'Special upgrade offer',
+    'What happens after trial?'
+  ]
+}
+
+// Day 12: Urgent Reminder
+{
+  emailType: 'TRIAL_DAY_12',
+  trigger: 'trialEndsAt - 1 day',
+  subject: '⚠️ Last day of your trial',
+  content: [
+    'Your trial ends tomorrow',
+    'Upgrade now to keep access',
+    'Limited time: 20% off first month'
+  ]
+}
+
+// Trial Ended
+{
+  emailType: 'TRIAL_ENDED',
+  trigger: 'trialEndsAt + 1 day',
+  subject: 'Your trial has ended',
+  content: [
+    'Thanks for trying Reportr',
+    'Reactivate anytime',
+    'We'd love your feedback'
+  ]
+}
+```
+
+### Usage Alert Sequence
+
+**Goal:** Notify users when approaching or reaching limits
+
+```typescript
+// 80% Limit Warning
+{
+  emailType: 'USAGE_80_PERCENT',
+  trigger: 'reports_used >= 80% of limit',
+  subject: 'You're running low on reports',
+  content: [
+    'You've used 80% of your monthly reports',
+    'Upgrade to generate unlimited reports',
+    'Your usage resets in X days'
+  ]
+}
+
+// 100% Limit Reached
+{
+  emailType: 'USAGE_100_PERCENT',
+  trigger: 'reports_used >= limit',
+  subject: 'Report limit reached',
+  content: [
+    'You've reached your monthly limit',
+    'Upgrade to continue generating reports',
+    'Or wait X days for your limit to reset'
+  ]
+}
+```
+
+## Cron Job Implementation
+
+### Daily Email Processing
+
+**Location:** `src/app/api/cron/send-emails/route.ts` (planned)
+
+```typescript
+export async function GET(request: Request) {
+  // Verify cron secret
+  const authHeader = request.headers.get('authorization');
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+  
+  console.log('🕐 Starting daily email processing...');
+  
+  // Process each email type
+  await processOnboardingEmails();
+  await processTrialEmails();
+  await processUsageAlerts();
+  
+  return new Response('OK', { status: 200 });
+}
+
+async function processOnboardingEmails() {
+  // Day 3 onboarding
+  const day3Users = await findUsersForTimeBasedEmail(
+    'ONBOARDING_DAY_3',
+    3,
+    'createdAt'
+  );
+  
+  for (const user of day3Users) {
+    try {
+      await sendEmail(user.email, 'onboarding-day-3', {
+        name: user.name || 'there',
+        loginUrl: `${process.env.NEXTAUTH_URL}/login`
+      });
+      
+      await logEmailSent(user.id, 'ONBOARDING_DAY_3');
+      console.log(`✅ Sent ONBOARDING_DAY_3 to ${user.email}`);
+    } catch (error) {
+      console.error(`❌ Failed to send to ${user.email}:`, error);
+    }
+  }
+  
+  // Day 7 onboarding
+  const day7Users = await findUsersForTimeBasedEmail(
+    'ONBOARDING_DAY_7',
+    7,
+    'createdAt'
+  );
+  
+  for (const user of day7Users) {
+    // Similar process...
+  }
+}
+
+async function processTrialEmails() {
+  // Find users whose trial ends in 3 days
+  const trialDay10Users = await prisma.user.findMany({
+    where: {
+      plan: 'FREE',
+      trialEndsAt: {
+        gte: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
+        lte: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+      },
+      emailLogs: {
+        none: { emailType: 'TRIAL_DAY_10' }
+      }
+    }
+  });
+  
+  for (const user of trialDay10Users) {
+    await sendEmail(user.email, 'trial-day-10', {
+      name: user.name,
+      trialEndsAt: formatDate(user.trialEndsAt!),
+      upgradeUrl: `${process.env.NEXTAUTH_URL}/pricing`
+    });
+    
+    await logEmailSent(user.id, 'TRIAL_DAY_10', {
+      trialEndsAt: user.trialEndsAt
+    });
+  }
+}
+```
+
+### Vercel Cron Configuration
+
+**File:** `vercel.json`
+
+```json
+{
+  "crons": [
+    {
+      "path": "/api/cron/send-emails",
+      "schedule": "0 10 * * *"
+    }
+  ]
+}
+```
+
+**Schedule:** Runs daily at 10:00 AM UTC
+
+## Email Service Integration
+
+### Send Email Function
+
+**Location:** `src/lib/email-service.ts`
+
+```typescript
+import { Resend } from 'resend';
+
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+export async function sendEmail(
+  to: string,
+  template: string,
+  data: Record<string, any>
+) {
+  const templates = {
+    'onboarding-welcome': {
+      subject: 'Welcome to Reportr',
+      component: OnboardingWelcomeEmail
+    },
+    'trial-day-10': {
+      subject: 'Your trial ends in 3 days',
+      component: TrialReminderEmail
+    },
+    // ... more templates
+  };
+  
+  const config = templates[template];
+  
+  await resend.emails.send({
+    from: 'Reportr <noreply@reportr.io>',
+    to,
+    subject: config.subject,
+    react: config.component(data)
+  });
+}
+```
+
+## Testing
+
+### Unit Tests
+
+```typescript
+import { hasEmailBeenSent, logEmailSent, findUsersForTimeBasedEmail } from '@/lib/email-sequences';
+
+describe('Email Sequences', () => {
+  it('prevents duplicate emails', async () => {
+    const user = await createTestUser();
+    
+    await logEmailSent(user.id, 'ONBOARDING_DAY_3');
+    const hasSent = await hasEmailBeenSent(user.id, 'ONBOARDING_DAY_3');
+    
+    expect(hasSent).toBe(true);
+  });
+  
+  it('finds users for time-based emails', async () => {
+    // Create user who signed up 3 days ago
+    const threeDaysAgo = new Date();
+    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+    
+    const user = await createTestUser({ createdAt: threeDaysAgo });
+    
+    const users = await findUsersForTimeBasedEmail('ONBOARDING_DAY_3', 3, 'createdAt');
+    
+    expect(users).toContainEqual(expect.objectContaining({ id: user.id }));
+  });
+});
+```
+
+## Best Practices
+
+### Deduplication
+
+1. **Always check before sending**
+   ```typescript
+   if (await hasEmailBeenSent(userId, emailType)) return;
+   ```
+
+2. **Log immediately after sending**
+   ```typescript
+   await sendEmail(...);
+   await logEmailSent(...);  // Don't delay this
+   ```
+
+3. **Handle race conditions gracefully**
+   - Database constraint prevents duplicates
+   - Ignore P2002 errors (already logged)
+
+### Timing
+
+1. **Use UTC for all date calculations**
+2. **Run cron jobs during low-traffic hours**
+3. **Add jitter to avoid thundering herd**
+
+### Monitoring
+
+1. **Track email delivery rates**
+2. **Monitor bounce rates**
+3. **Log all send failures**
+4. **Alert on high failure rates**
+
+```typescript
+// Add monitoring
+await prisma.emailMetrics.create({
+  data: {
+    emailType,
+    sent: successCount,
+    failed: failureCount,
+    date: new Date()
+  }
+});
+```

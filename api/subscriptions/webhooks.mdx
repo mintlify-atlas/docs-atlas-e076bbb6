@@ -1,0 +1,329 @@
+---
+title: PayPal Webhooks
+description: Handle PayPal subscription lifecycle events via webhooks
+---
+
+## Overview
+
+Receives and processes webhook events from PayPal for subscription lifecycle management. This endpoint handles subscription activations, payment completions, payment failures, and cancellations.
+
+## Endpoint
+
+```
+POST /api/payments/webhook
+```
+
+## Authentication
+
+Webhook requests are authenticated using PayPal's signature verification mechanism. The endpoint validates:
+
+- PayPal transmission ID
+- Transmission timestamp
+- Transmission signature
+- Certificate URL
+- Authentication algorithm
+
+In sandbox mode, signature verification is bypassed for testing.
+
+## Webhook Event Types
+
+The endpoint handles the following PayPal webhook events:
+
+### BILLING.SUBSCRIPTION.ACTIVATED
+
+Triggered when a subscription becomes active after user approval.
+
+**Payload**:
+```json
+{
+  "event_type": "BILLING.SUBSCRIPTION.ACTIVATED",
+  "resource": {
+    "id": "I-BW452GLLEP1G",
+    "plan_id": "P-09P26662R8680522DNEQJ7XY",
+    "status": "ACTIVE",
+    "subscriber": {
+      "email_address": "user@example.com",
+      "payer_id": "PAYERID123"
+    },
+    "billing_info": {
+      "next_billing_time": "2026-04-04T10:00:00Z"
+    }
+  }
+}
+```
+
+**Actions**:
+- Finds user by `paypalSubscriptionId`
+- Activates subscription using `subscriptionService.activateSubscription()`
+- Detects plan from PayPal plan ID
+- Updates user record with subscription status and billing dates
+- Enables white-label features
+
+### PAYMENT.SALE.COMPLETED
+
+Triggered when a recurring payment is successfully processed.
+
+**Payload**:
+```json
+{
+  "event_type": "PAYMENT.SALE.COMPLETED",
+  "resource": {
+    "id": "SALE123",
+    "billing_agreement_id": "I-BW452GLLEP1G",
+    "amount": {
+      "total": "49.00",
+      "currency": "USD"
+    },
+    "create_time": "2026-04-04T10:00:00Z"
+  }
+}
+```
+
+**Actions**:
+- Resets billing cycle dates
+- Sets subscription status to `active`
+- Creates payment record in database
+- Updates `billingCycleStart` and `billingCycleEnd`
+
+### BILLING.SUBSCRIPTION.PAYMENT.FAILED
+
+Triggered when a subscription payment fails.
+
+**Payload**:
+```json
+{
+  "event_type": "BILLING.SUBSCRIPTION.PAYMENT.FAILED",
+  "resource": {
+    "id": "I-BW452GLLEP1G",
+    "status": "SUSPENDED"
+  }
+}
+```
+
+**Actions**:
+- Updates subscription status to `past_due`
+- User retains access temporarily
+- PayPal will retry payment automatically
+
+### BILLING.SUBSCRIPTION.CANCELLED
+
+Triggered when a subscription is cancelled (via API or user action in PayPal).
+
+**Payload**:
+```json
+{
+  "event_type": "BILLING.SUBSCRIPTION.CANCELLED",
+  "resource": {
+    "id": "I-BW452GLLEP1G",
+    "status": "CANCELLED"
+  }
+}
+```
+
+**Actions**:
+- Updates subscription status to `canceled`
+- User retains access until `billingCycleEnd`
+- Sends cancellation confirmation email
+
+## Webhook Headers
+
+PayPal includes the following headers for signature verification:
+
+<ParamField header="paypal-transmission-id" type="string" required>
+  Unique identifier for the webhook transmission
+</ParamField>
+
+<ParamField header="paypal-transmission-time" type="string" required>
+  Timestamp when the webhook was transmitted
+</ParamField>
+
+<ParamField header="paypal-transmission-sig" type="string" required>
+  Signature for verifying the webhook authenticity
+</ParamField>
+
+<ParamField header="paypal-cert-url" type="string" required>
+  URL to PayPal's certificate for signature verification
+</ParamField>
+
+<ParamField header="paypal-auth-algo" type="string" required>
+  Algorithm used for signature (e.g., `SHA256withRSA`)
+</ParamField>
+
+## Response
+
+The endpoint always returns a 200 OK response to acknowledge receipt:
+
+```json
+{
+  "received": true
+}
+```
+
+This prevents PayPal from retrying on application errors. All errors are logged server-side.
+
+## Signature Verification
+
+### Production Mode
+
+In production, the endpoint performs full certificate-based signature verification:
+
+1. Validates all required PayPal headers are present
+2. Fetches PayPal's public certificate from `paypal-cert-url`
+3. Constructs expected signature payload
+4. Verifies signature using RSA-SHA256
+5. Rejects webhook if verification fails (401 Unauthorized)
+
+### Sandbox Mode
+
+When `PAYPAL_MODE=sandbox`, signature verification is bypassed to allow testing:
+
+```typescript
+if (process.env.PAYPAL_MODE === 'sandbox') {
+  console.log('✅ SANDBOX MODE: Webhook accepted');
+  return true;
+}
+```
+
+### Current Status
+
+**Note**: Signature verification is currently bypassed in all modes while the production implementation is being debugged. This is safe because PayPal plan IDs are validated against a hardcoded mapping.
+
+## WebhookEvent Model
+
+All webhook events are logged in the database:
+
+```typescript
+model WebhookEvent {
+  id            String        @id @default(cuid())
+  eventType     String        // e.g., "BILLING.SUBSCRIPTION.ACTIVATED"
+  eventData     Json          // Full webhook payload
+  status        WebhookStatus @default(PENDING)
+  attempts      Int           @default(0)
+  maxAttempts   Int           @default(3)
+  nextAttemptAt DateTime?
+  lastError     String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+enum WebhookStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+```
+
+**Schema Location**: `prisma/schema.prisma:162`
+
+## Error Handling
+
+The webhook endpoint includes robust error handling:
+
+- **Signature Verification Failures**: Returns 401 Unauthorized
+- **Processing Errors**: Returns 200 OK with `received: true` to prevent retries
+- **User Not Found**: Logs warning, returns 200 OK
+- **Database Errors**: Logs error, returns 200 OK
+
+All errors are logged with detailed context for debugging.
+
+## Testing Webhooks
+
+### Using PayPal Sandbox
+
+1. Set `PAYPAL_MODE=sandbox` in environment variables
+2. Configure webhook URL in PayPal Developer Dashboard:
+   ```
+   https://your-domain.com/api/payments/webhook
+   ```
+3. Subscribe to relevant events:
+   - `BILLING.SUBSCRIPTION.ACTIVATED`
+   - `PAYMENT.SALE.COMPLETED`
+   - `BILLING.SUBSCRIPTION.PAYMENT.FAILED`
+   - `BILLING.SUBSCRIPTION.CANCELLED`
+
+### Manual Testing
+
+You can simulate webhooks using the PayPal Webhook Simulator in the Developer Dashboard, or send manual requests:
+
+```bash
+curl -X POST https://your-domain.com/api/payments/webhook \
+  -H "Content-Type: application/json" \
+  -H "paypal-transmission-id: unique-id-123" \
+  -H "paypal-transmission-time: 2026-03-04T10:00:00Z" \
+  -H "paypal-transmission-sig: signature-here" \
+  -H "paypal-cert-url: https://api.paypal.com/cert" \
+  -H "paypal-auth-algo: SHA256withRSA" \
+  -d '{
+    "event_type": "BILLING.SUBSCRIPTION.ACTIVATED",
+    "resource": {
+      "id": "I-TEST123",
+      "plan_id": "P-09P26662R8680522DNEQJ7XY",
+      "status": "ACTIVE"
+    }
+  }'
+```
+
+## Subscription Service Integration
+
+The webhook endpoint delegates processing to `SubscriptionService` methods:
+
+**Activation**:
+```typescript
+await subscriptionService.activateSubscription({
+  userId: user.id,
+  paypalSubscriptionId: subscriptionId,
+  plan: user.plan,
+});
+```
+
+**Renewal**:
+```typescript
+await subscriptionService.handleRenewal(
+  subscriptionId,
+  body.resource
+);
+```
+
+**Payment Failure**:
+```typescript
+await subscriptionService.handlePaymentFailure(subscriptionId);
+```
+
+**Cancellation**:
+```typescript
+await subscriptionService.handleCancellation(subscriptionId);
+```
+
+**Service Implementation**: `src/lib/services/subscription-service.ts:22`
+
+## Webhook Retry Logic
+
+PayPal automatically retries failed webhooks:
+
+- **Retry Schedule**: Exponential backoff (immediate, 5m, 10m, 30m, 1h, 6h, 12h, 24h)
+- **Max Retries**: 25 attempts over 10 days
+- **Success Criteria**: HTTP 200 response
+
+By returning 200 OK on all requests (including errors), we prevent unnecessary retries and handle failures through logging and monitoring.
+
+## Security Considerations
+
+1. **Signature Verification**: Always verify PayPal signatures in production
+2. **HTTPS Only**: Webhook endpoint must use HTTPS
+3. **IP Allowlisting**: Consider restricting to PayPal IP ranges
+4. **Idempotency**: Webhook handlers should be idempotent to handle duplicate events
+5. **Plan ID Validation**: All PayPal plan IDs are validated against hardcoded mapping
+
+## Implementation Details
+
+**Webhook Handler**: `src/app/api/payments/webhook/route.ts:72`
+
+**Signature Verification**: `src/app/api/payments/webhook/route.ts:20`
+
+**PayPal Plan Mapping**: `src/lib/paypal.ts:7`
+
+## Related Endpoints
+
+- [Activate Subscription](/api/subscriptions/activate) - Manual subscription activation
+- [Cancel Subscription](/api/subscriptions/cancel) - Cancel an active subscription

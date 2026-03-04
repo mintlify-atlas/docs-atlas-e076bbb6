@@ -1,0 +1,311 @@
+---
+title: 'Google APIs Setup'
+description: 'Configure Google Cloud Console and obtain API credentials for Search Console, Analytics 4, and PageSpeed Insights'
+---
+
+## Overview
+
+Reportr integrates with three Google APIs to generate comprehensive SEO reports:
+
+- **Google Search Console API** - Search performance and keyword data
+- **Google Analytics 4 API** - User behavior and traffic metrics
+- **PageSpeed Insights API** - Core Web Vitals and performance scores
+
+This guide walks you through setting up OAuth credentials and API keys.
+
+## Prerequisites
+
+- A Google Cloud Platform account
+- Admin access to your deployment environment variables
+- Domain verification (for production deployment)
+
+## Step 1: Create a Google Cloud Project
+
+<Steps>
+  <Step title="Access Google Cloud Console">
+    Navigate to [Google Cloud Console](https://console.cloud.google.com/) and sign in with your Google account.
+  </Step>
+
+  <Step title="Create a new project">
+    1. Click the project dropdown in the top navigation
+    2. Click **New Project**
+    3. Enter a project name (e.g., "Reportr Production")
+    4. Click **Create**
+  </Step>
+
+  <Step title="Select your project">
+    Once created, ensure your new project is selected in the project dropdown.
+  </Step>
+</Steps>
+
+## Step 2: Enable Required APIs
+
+<Steps>
+  <Step title="Navigate to APIs & Services">
+    From the left sidebar, click **APIs & Services** → **Library**
+  </Step>
+
+  <Step title="Enable Google Search Console API">
+    1. Search for "Google Search Console API"
+    2. Click on the result
+    3. Click **Enable**
+  </Step>
+
+  <Step title="Enable Google Analytics Data API">
+    1. Search for "Google Analytics Data API"
+    2. Click on the result
+    3. Click **Enable**
+    
+    <Note>
+      You need the **Data API v1**, not the older Reporting API.
+    </Note>
+  </Step>
+
+  <Step title="Enable PageSpeed Insights API">
+    1. Search for "PageSpeed Insights API"
+    2. Click on the result
+    3. Click **Enable**
+  </Step>
+</Steps>
+
+## Step 3: Configure OAuth Consent Screen
+
+<Steps>
+  <Step title="Navigate to OAuth consent screen">
+    Go to **APIs & Services** → **OAuth consent screen**
+  </Step>
+
+  <Step title="Choose user type">
+    - **Internal**: Only for Google Workspace organizations
+    - **External**: For public SaaS (choose this for most deployments)
+    
+    Click **Create**
+  </Step>
+
+  <Step title="Fill in app information">
+    **App information:**
+    - App name: `Your Agency Name - Reportr`
+    - User support email: Your support email
+    - Developer contact: Your email
+    
+    **App domain (required for production):**
+    - Application home page: `https://yourdomain.com`
+    - Privacy policy: `https://yourdomain.com/privacy`
+    - Terms of service: `https://yourdomain.com/terms`
+    
+    Click **Save and Continue**
+  </Step>
+
+  <Step title="Add required scopes">
+    Click **Add or Remove Scopes** and add these scopes:
+    
+    ```
+    https://www.googleapis.com/auth/webmasters.readonly
+    https://www.googleapis.com/auth/analytics.readonly
+    ```
+    
+    These match the scopes defined in `/workspace/source/src/lib/google/config.ts:3-6`
+    
+    Click **Save and Continue**
+  </Step>
+
+  <Step title="Add test users (for development)">
+    If using External user type in testing mode:
+    1. Click **Add Users**
+    2. Add your email and any test user emails
+    3. Click **Save and Continue**
+    
+    <Warning>
+      Apps in testing mode are limited to 100 users. You must publish the app for production use.
+    </Warning>
+  </Step>
+</Steps>
+
+## Step 4: Create OAuth 2.0 Credentials
+
+<Steps>
+  <Step title="Navigate to Credentials">
+    Go to **APIs & Services** → **Credentials**
+  </Step>
+
+  <Step title="Create OAuth Client ID">
+    1. Click **Create Credentials** → **OAuth client ID**
+    2. Application type: **Web application**
+    3. Name: `Reportr OAuth Client`
+  </Step>
+
+  <Step title="Configure authorized redirect URIs">
+    Add your callback URLs:
+    
+    **For local development:**
+    ```
+    http://localhost:3000/api/auth/google/callback
+    ```
+    
+    **For production:**
+    ```
+    https://yourdomain.com/api/auth/google/callback
+    ```
+    
+    <Note>
+      This matches the redirect URI in `/workspace/source/src/app/api/auth/google/authorize/route.ts:17-22`
+    </Note>
+    
+    Click **Create**
+  </Step>
+
+  <Step title="Save your credentials">
+    You'll see a modal with:
+    - **Client ID** - Copy this
+    - **Client Secret** - Copy this
+    
+    Keep these secure - you'll add them to your environment variables.
+  </Step>
+</Steps>
+
+## Step 5: Create PageSpeed Insights API Key
+
+<Steps>
+  <Step title="Create API key">
+    1. Go to **APIs & Services** → **Credentials**
+    2. Click **Create Credentials** → **API key**
+    3. Copy the generated API key
+  </Step>
+
+  <Step title="Restrict the API key (recommended)">
+    1. Click **Edit API key**
+    2. Under **API restrictions**, select **Restrict key**
+    3. Select **PageSpeed Insights API**
+    4. Click **Save**
+    
+    <Tip>
+      API restrictions prevent unauthorized use if your key is exposed.
+    </Tip>
+  </Step>
+</Steps>
+
+## Step 6: Configure Environment Variables
+
+Add the credentials to your `.env` file:
+
+```bash
+# Google OAuth & APIs
+GOOGLE_CLIENT_ID="your-client-id.apps.googleusercontent.com"
+GOOGLE_CLIENT_SECRET="your-client-secret"
+GOOGLE_REDIRECT_URI="http://localhost:3000/api/auth/google/callback"
+
+# Google API Keys (for PageSpeed Insights)
+PAGESPEED_API_KEY="your-pagespeed-api-key"
+
+# NextAuth Configuration
+NEXTAUTH_URL="http://localhost:3000"
+NEXT_PUBLIC_APP_URL="http://localhost:3000"
+```
+
+For production, update the URLs to your domain:
+
+```bash
+GOOGLE_REDIRECT_URI="https://yourdomain.com/api/auth/google/callback"
+NEXTAUTH_URL="https://yourdomain.com"
+NEXT_PUBLIC_APP_URL="https://yourdomain.com"
+```
+
+## Rate Limits and Quotas
+
+Reportr is configured with the following API rate limits (see `/workspace/source/src/lib/google/config.ts:34-48`):
+
+| API | Requests/Minute | Requests/Day |
+|-----|----------------|-------------|
+| Search Console | 100 | 1,000 |
+| Analytics 4 | 100 | 50,000 |
+| PageSpeed Insights | 25 | 25,000 |
+
+<Warning>
+  **Search Console has the lowest quota.** For agencies with many clients, consider requesting a quota increase from Google Cloud Console.
+</Warning>
+
+## Verification and Testing
+
+<Steps>
+  <Step title="Verify API access">
+    Check that all three APIs show as "Enabled" in your Google Cloud Console:
+    
+    **APIs & Services** → **Enabled APIs & services**
+  </Step>
+
+  <Step title="Test OAuth flow">
+    1. Start your development server: `npm run dev`
+    2. Sign in to Reportr
+    3. Navigate to **Dashboard** → **Clients**
+    4. Add a client and click **Connect Google Account**
+    5. You should see the Google OAuth consent screen
+  </Step>
+
+  <Step title="Verify scopes are granted">
+    After authorizing, check that both scopes were granted:
+    - Search Console access
+    - Analytics read-only access
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+### "Redirect URI mismatch" Error
+
+**Problem:** OAuth callback fails with redirect URI error
+
+**Solution:**
+1. Verify the redirect URI in Google Cloud Console exactly matches your `GOOGLE_REDIRECT_URI`
+2. Ensure there are no trailing slashes
+3. Check that `NEXTAUTH_URL` is set correctly
+4. Restart your development server after changing environment variables
+
+### "Access Denied" During OAuth
+
+**Problem:** Users see "This app isn't verified" or access is denied
+
+**Solution:**
+- For development: Add users as test users in OAuth consent screen
+- For production: Complete the app verification process with Google
+
+### API Quota Exceeded
+
+**Problem:** Report generation fails with quota errors
+
+**Solution:**
+1. Check current quota usage in **APIs & Services** → **Dashboard**
+2. Request quota increases for production workloads
+3. Implement caching to reduce API calls (future enhancement)
+
+### Missing Scopes Error
+
+**Problem:** API calls fail with insufficient permissions
+
+**Solution:**
+1. Verify scopes in OAuth consent screen match those in `config.ts`
+2. Have users re-authorize their connection to grant new scopes
+3. Check that the correct scopes are being requested in the OAuth flow
+
+## Security Best Practices
+
+<Warning>
+  Never commit API keys or client secrets to version control. Use environment variables and keep your `.env` file secure.
+</Warning>
+
+- **Rotate credentials** if they're ever exposed
+- **Use API restrictions** on your PageSpeed API key
+- **Enable Cloud Audit Logs** to monitor API usage
+- **Set up quota alerts** to catch unusual usage patterns
+
+## Next Steps
+
+Once your Google APIs are configured:
+
+<CardGroup cols={2}>
+  <Card title="Connect Clients" icon="link" href="/guides/connecting-clients">
+    Learn how to connect client websites to Google APIs
+  </Card>
+  <Card title="Generate Reports" icon="file-chart-column" href="/guides/generating-reports">
+    Start creating AI-powered SEO reports
+  </Card>
+</CardGroup>

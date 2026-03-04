@@ -1,0 +1,254 @@
+---
+title: 'Development Setup'
+description: 'Complete guide to setting up your Reportr development environment'
+---
+
+## Prerequisites
+
+Before you begin, ensure you have the following installed:
+
+- **Node.js 18+** - Required for Next.js 14
+- **PostgreSQL** - Database for storing users, clients, and reports
+- **Google Cloud Console project** - For OAuth and API access
+- **Git** - For version control
+
+## Installation
+
+### 1. Clone the Repository
+
+```bash
+git clone <your-repo-url>
+cd reportr
+```
+
+### 2. Install Dependencies
+
+Install all required npm packages:
+
+```bash
+npm install
+```
+
+This will also automatically run `prisma generate` via the postinstall script to generate the Prisma Client.
+
+### 3. Environment Configuration
+
+Copy the example environment file:
+
+```bash
+cp .env.example .env
+```
+
+Then configure all required environment variables. See the [Environment Variables](/development/environment-variables) page for detailed configuration.
+
+### 4. Database Setup
+
+Run database migrations to create the schema:
+
+```bash
+npm run db:migrate
+```
+
+Seed the database with sample data (optional):
+
+```bash
+npm run db:seed
+```
+
+### 5. Start Development Server
+
+Launch the development server:
+
+```bash
+npm run dev
+```
+
+The application will be available at [http://localhost:3000](http://localhost:3000).
+
+## Available Scripts
+
+### Development Commands
+
+<CodeGroup>
+```bash Development Server
+npm run dev
+```
+
+```bash Production Build
+npm run build
+```
+
+```bash Start Production Server
+npm run start
+```
+
+```bash Lint Code
+npm run lint
+```
+</CodeGroup>
+
+### Database Commands
+
+<CodeGroup>
+```bash Run Migrations
+npm run db:migrate
+```
+
+```bash Push Schema Changes
+npm run db:push
+```
+
+```bash Seed Database
+npm run db:seed
+```
+
+```bash Open Prisma Studio
+npm run db:studio
+```
+</CodeGroup>
+
+## Project Structure
+
+Reportr follows a structured approach based on Next.js 14 App Router and atomic design principles:
+
+```
+src/
+├── app/                    # Next.js App Router
+│   ├── (auth)/            # Auth route group (sign-in, sign-up)
+│   ├── (dashboard)/       # Protected dashboard routes
+│   ├── api/               # API routes
+│   ├── globals.css        # Global styles
+│   ├── layout.tsx         # Root layout
+│   └── page.tsx           # Home page
+├── components/            # Atomic design components
+│   ├── atoms/            # Basic elements (Button, Input, Typography)
+│   ├── molecules/        # Simple combinations (UserMenu, MetricCard)
+│   ├── organisms/        # Complex components (ReportCard, ClientTable)
+│   ├── templates/        # Page layouts (DashboardTemplate)
+│   └── pages/            # Complete pages
+├── lib/                  # Core business logic
+│   ├── auth.ts          # NextAuth configuration
+│   ├── db.ts            # Database connection
+│   ├── utils.ts         # Utility functions
+│   ├── validations.ts   # Zod schemas
+│   ├── google/          # Google API integrations
+│   ├── reports/         # Report generation pipeline
+│   ├── ai/              # Claude API integration
+│   ├── pdf/             # PDF generation
+│   └── queue/           # Background job processing
+├── hooks/               # Custom React hooks
+├── types/               # TypeScript definitions
+└── styles/              # Additional styles
+```
+
+## Path Aliases
+
+The project uses TypeScript path aliases for cleaner imports:
+
+```typescript
+"@/*": ["./src/*"]
+"@/components/*": ["./src/components/*"]
+"@/lib/*": ["./src/lib/*"]
+"@/types/*": ["./src/types/*"]
+"@/hooks/*": ["./src/hooks/*"]
+```
+
+### Usage Example
+
+```typescript
+// Instead of:
+import { Button } from '../../../components/atoms/Button'
+
+// Use:
+import { Button } from '@/components/atoms/Button'
+```
+
+## TypeScript Configuration
+
+Reportr uses strict TypeScript mode for maximum type safety:
+
+- `noImplicitAny: true` - All variables must have explicit types
+- `strictNullChecks: true` - Proper null/undefined handling required
+- `noUncheckedIndexedAccess: true` - Array/object access returns T | undefined
+- Target: ES2020 with DOM libraries
+
+## Google Cloud Setup
+
+To enable authentication and API integrations, you need to configure a Google Cloud project:
+
+### 1. Create a Google Cloud Project
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com)
+2. Create a new project or select an existing one
+3. Enable billing (required for API access)
+
+### 2. Enable Required APIs
+
+Enable the following APIs in your project:
+
+- Google Search Console API
+- Google Analytics API (v4)
+- Google Analytics Admin API
+- PageSpeed Insights API
+
+### 3. Configure OAuth 2.0
+
+1. Navigate to **APIs & Services** > **Credentials**
+2. Click **Create Credentials** > **OAuth 2.0 Client ID**
+3. Configure the OAuth consent screen
+4. Add authorized redirect URI: `http://localhost:3000/api/auth/callback/google`
+5. Copy the Client ID and Client Secret to your `.env` file
+
+### 4. Create API Key for PageSpeed
+
+1. In **Credentials**, click **Create Credentials** > **API Key**
+2. Copy the API key to `PAGESPEED_API_KEY` in your `.env` file
+
+## Next Steps
+
+After completing the setup:
+
+1. Review the [Environment Variables](/development/environment-variables) documentation
+2. Learn about the [Database Schema](/development/database)
+3. Read the development guidelines in `CLAUDE.md` in the source repository
+4. Start building features following the atomic design principles
+
+## Troubleshooting
+
+### Database Connection Issues
+
+If you encounter database connection errors:
+
+1. Verify PostgreSQL is running
+2. Check the `DATABASE_URL` format in `.env`
+3. Ensure the database exists: `createdb seo_reportbot`
+4. Try `npm run db:push` to sync the schema
+
+### Prisma Client Errors
+
+If Prisma Client is not generated:
+
+```bash
+npx prisma generate
+```
+
+### Port Already in Use
+
+If port 3000 is already in use:
+
+```bash
+# Kill the process using port 3000
+lsof -ti:3000 | xargs kill -9
+
+# Or use a different port
+PORT=3001 npm run dev
+```
+
+### Module Not Found Errors
+
+Clear node_modules and reinstall:
+
+```bash
+rm -rf node_modules package-lock.json
+npm install
+```

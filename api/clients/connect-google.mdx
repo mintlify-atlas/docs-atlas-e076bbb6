@@ -1,0 +1,216 @@
+---
+title: "Connect Google Account"
+api: "GET /api/auth/google/authorize"
+description: "Initialize Google OAuth flow to connect Search Console and Analytics"
+---
+
+## Overview
+
+Reportr uses Google OAuth 2.0 to connect to Google Search Console and Google Analytics 4. This endpoint initiates the OAuth flow that requests the necessary permissions.
+
+## Authentication Flow
+
+1. **Initiate OAuth**: Client redirects user to `/api/auth/google/authorize?clientId={id}`
+2. **User Consent**: User authenticates with Google and grants permissions
+3. **Callback**: Google redirects to `/api/auth/google/callback` with authorization code
+4. **Token Exchange**: Server exchanges code for access and refresh tokens
+5. **Store Tokens**: Tokens are securely stored in the database
+6. **Complete**: User is redirected back to dashboard with connection status
+
+## Initiate OAuth
+
+### Query Parameters
+
+<ParamField query="clientId" type="string" required>
+  The unique identifier of the client to connect Google services for
+</ParamField>
+
+### Requested Scopes
+
+The OAuth flow requests the following Google API scopes:
+
+- `https://www.googleapis.com/auth/webmasters.readonly` - Read-only access to Search Console data
+- `https://www.googleapis.com/auth/analytics.readonly` - Read-only access to Google Analytics data
+- `openid` - OpenID Connect authentication
+- `email` - User's email address
+- `profile` - User's basic profile information
+
+## OAuth Callback
+
+After user authorization, Google redirects to `/api/auth/google/callback`.
+
+### Callback Query Parameters
+
+<ParamField query="code" type="string">
+  Authorization code from Google (exchanged for tokens)
+</ParamField>
+
+<ParamField query="state" type="string">
+  Client ID passed through OAuth flow for validation
+</ParamField>
+
+<ParamField query="error" type="string">
+  Error code if user denied access
+</ParamField>
+
+### Stored Token Data
+
+After successful OAuth, the following data is stored in the client record:
+
+<ResponseField name="googleAccessToken" type="string">
+  Short-lived access token for API requests (encrypted)
+</ResponseField>
+
+<ResponseField name="googleRefreshToken" type="string">
+  Long-lived refresh token for obtaining new access tokens (encrypted)
+</ResponseField>
+
+<ResponseField name="googleTokenExpiry" type="datetime">
+  Expiration timestamp for the access token
+</ResponseField>
+
+<ResponseField name="googleConnectedAt" type="datetime">
+  Timestamp when Google account was connected
+</ResponseField>
+
+<ResponseField name="googleSearchConsoleConnected" type="boolean">
+  Set to `true` after successful connection
+</ResponseField>
+
+<ResponseField name="googleAnalyticsConnected" type="boolean">
+  Set to `true` after successful connection
+</ResponseField>
+
+## Example Implementation
+
+```javascript JavaScript - Initiate OAuth
+const connectGoogle = (clientId) => {
+  // Redirect to OAuth authorization endpoint
+  window.location.href = `/api/auth/google/authorize?clientId=${clientId}`;
+};
+
+// Usage in React component
+<button onClick={() => connectGoogle(client.id)}>
+  Connect Google Account
+</button>
+```
+
+```javascript JavaScript - Handle Callback
+// On your dashboard/clients page, check for connection status
+import { useSearchParams } from 'next/navigation';
+
+function ClientsPage() {
+  const searchParams = useSearchParams();
+  
+  useEffect(() => {
+    // Check for successful connection
+    if (searchParams.get('connected') === 'true') {
+      const clientId = searchParams.get('clientId');
+      console.log(`Google connected successfully for client ${clientId}`);
+      // Show success message to user
+    }
+    
+    // Check for errors
+    const error = searchParams.get('error');
+    if (error) {
+      switch (error) {
+        case 'oauth_denied':
+          console.error('User denied Google access');
+          break;
+        case 'oauth_failed':
+          console.error('OAuth connection failed');
+          break;
+        case 'client_not_found':
+          console.error('Client not found');
+          break;
+      }
+    }
+  }, [searchParams]);
+  
+  return <div>Clients Dashboard</div>;
+}
+```
+
+## Redirect URLs
+
+After OAuth callback processing, users are redirected to:
+
+**Success**: `/dashboard/clients?connected=true&clientId={id}`
+
+**Error Cases**:
+- User denied access: `/dashboard/clients?error=oauth_denied`
+- OAuth failed: `/dashboard/clients?error=oauth_failed`
+- Client not found: `/dashboard/clients?error=client_not_found`
+- Generic error: `/dashboard/clients?error=oauth_failed&details={message}`
+
+## Token Refresh
+
+Access tokens expire after approximately 1 hour. Reportr automatically refreshes tokens using the stored refresh token when making API requests.
+
+The refresh process is handled internally by:
+- `src/lib/utils/refresh-google-token.ts`
+
+If refresh fails (e.g., user revoked access), the API returns:
+
+```json
+{
+  "error": "Google token refresh failed",
+  "code": "TOKEN_REFRESH_FAILED"
+}
+```
+
+In this case, the user must reconnect their Google account.
+
+## Disconnect Google Account
+
+To disconnect a Google account, use the `DELETE /api/clients/{id}/disconnect` endpoint. This removes all stored Google credentials for the client.
+
+## Security Notes
+
+- Access tokens and refresh tokens are stored encrypted in the database
+- Tokens are scoped to read-only access for Search Console and Analytics
+- Users can revoke access at any time via their Google Account settings
+- OAuth state parameter validates the client ID to prevent CSRF attacks
+- Requires authenticated user session - only client owner can connect Google
+
+## Troubleshooting
+
+### "Client not found" Error
+
+Occurs when:
+- Client ID in state parameter doesn't exist
+- Client belongs to a different user
+- Client was deleted during OAuth flow
+
+**Solution**: Ensure user is authenticated and owns the client before initiating OAuth.
+
+### "OAuth denied" Error
+
+Occurs when:
+- User clicks "Cancel" on Google consent screen
+- User denies required permissions
+
+**Solution**: User must grant all requested permissions for Reportr to function.
+
+### Token Refresh Failures
+
+Occurs when:
+- User revoked access in Google Account settings
+- Refresh token expired (rare, usually valid indefinitely)
+- Google API temporary issues
+
+**Solution**: Prompt user to reconnect Google account via OAuth flow.
+
+## Example cURL (Redirect)
+
+```bash cURL
+# This will redirect to Google's OAuth consent screen
+curl -L https://your-domain.com/api/auth/google/authorize?clientId=clx1a2b3c4d5e6f7g8h9i0j1k
+```
+
+## Related Endpoints
+
+- [Search Console API](/api/google/search-console)
+- [Analytics API](/api/google/analytics)
+- [Update Client](/api/clients/update)
+- [Delete Client](/api/clients/delete)

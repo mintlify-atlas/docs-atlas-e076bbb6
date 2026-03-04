@@ -1,0 +1,781 @@
+---
+title: 'Google Integrations'
+description: 'Connect Google Search Console, Google Analytics 4, and PageSpeed Insights to pull SEO data automatically'
+icon: 'google'
+---
+
+## Overview
+
+Reportr connects to three Google services to collect comprehensive SEO data for your client reports:
+
+- **Google Search Console** - Organic search performance (clicks, keywords, positions)
+- **Google Analytics 4** - Website traffic and user behavior
+- **PageSpeed Insights** - Performance scores and Core Web Vitals
+
+<Info>
+  All integrations use **read-only** API access. Reportr never modifies your Google data.
+</Info>
+
+## Authentication Architecture
+
+Reportr uses OAuth 2.0 to securely access Google APIs without storing passwords.
+
+### OAuth Flow
+
+<Steps>
+  <Step title="User Initiates Connection">
+    Click "Connect Google Accounts" on a client card. This triggers the OAuth authorization flow.
+  </Step>
+  
+  <Step title="Authorization Request">
+    Reportr redirects to Google's OAuth consent screen with:
+    - Client ID from environment variables
+    - Requested scopes (Search Console, Analytics)
+    - Redirect URI for callback
+  </Step>
+  
+  <Step title="User Grants Access">
+    Select Google account and approve permissions. Google returns an authorization code.
+  </Step>
+  
+  <Step title="Token Exchange">
+    Reportr exchanges the authorization code for:
+    - **Access Token** (short-lived, 1 hour)
+    - **Refresh Token** (long-lived, no expiration)
+  </Step>
+  
+  <Step title="Secure Storage">
+    Tokens are encrypted and stored in the database:
+    ```prisma
+    model Client {
+      googleAccessToken     String?  // Encrypted
+      googleRefreshToken    String?  // Encrypted
+      googleTokenExpiry     DateTime?
+      googleConnectedAt     DateTime?
+    }
+    ```
+  </Step>
+</Steps>
+
+### Token Refresh Mechanism
+
+Access tokens expire after 1 hour. Reportr automatically refreshes them:
+
+```typescript Token Refresh (from config.ts)
+export async function refreshAccessToken(
+  refreshToken: string
+): Promise<{ accessToken: string; expiresAt: Date }> {
+  const oauth2Client = createGoogleAuthClient();
+  oauth2Client.setCredentials({ refresh_token: refreshToken });
+  
+  const { credentials } = await oauth2Client.refreshAccessToken();
+  
+  return {
+    accessToken: credentials.access_token!,
+    expiresAt: new Date(credentials.expiry_date!)
+  };
+}
+```
+
+<Tip>
+  Refresh tokens don't expire unless the user revokes access. Reportr can maintain connection indefinitely with automatic token refresh.
+</Tip>
+
+## Google Search Console
+
+### Required Permissions
+
+OAuth Scope: `https://www.googleapis.com/auth/webmasters.readonly`
+
+**What this allows**:
+- Read Search Console performance data
+- List verified sites and properties
+- Access search analytics reports
+
+**What this does NOT allow**:
+- Modify site settings
+- Add/remove users
+- Change verification status
+
+### Available Data
+
+Reportr fetches comprehensive Search Console metrics:
+
+<Tabs>
+  <Tab title="Overall Performance">
+    Aggregated metrics for the selected date range:
+    
+    ```typescript
+    {
+      totalClicks: 1234,
+      totalImpressions: 45678,
+      averagePosition: 12.3,
+      averageCTR: 2.7  // percentage
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Top Keywords">
+    Up to 100 top-performing search queries:
+    
+    ```typescript
+    [
+      {
+        keyword: "best seo tools",
+        clicks: 234,
+        impressions: 5432,
+        position: 3.2,
+        ctr: 4.3
+      }
+      // ... more keywords
+    ]
+    ```
+  </Tab>
+  
+  <Tab title="Top Pages">
+    Up to 100 top-performing landing pages:
+    
+    ```typescript
+    [
+      {
+        page: "https://example.com/blog/seo-guide",
+        clicks: 543,
+        impressions: 12345,
+        position: 5.6,
+        ctr: 4.4
+      }
+      // ... more pages
+    ]
+    ```
+  </Tab>
+  
+  <Tab title="Daily Time Series">
+    Day-by-day performance for charting:
+    
+    ```typescript
+    [
+      {
+        date: "2025-01-15",
+        clicks: 42,
+        impressions: 987,
+        position: 12.1,
+        ctr: 4.3
+      }
+      // ... daily data points
+    ]
+    ```
+  </Tab>
+  
+  <Tab title="Keyword-Page Mapping">
+    Cross-reference of keywords to pages:
+    
+    ```typescript
+    [
+      {
+        keyword: "seo guide",
+        page: "https://example.com/blog/seo",
+        clicks: 45,
+        impressions: 987,
+        position: 8.2
+      }
+      // ... top 100 combinations
+    ]
+    ```
+  </Tab>
+</Tabs>
+
+### Property Types
+
+Search Console supports two property types:
+
+<CardGroup cols={2}>
+  <Card title="URL-Prefix Property" icon="link">
+    **Format**: `https://example.com/`
+    
+    - Specific protocol (http/https)
+    - Includes subdomain
+    - Requires trailing slash
+    
+    **Example**: `https://www.example.com/`
+  </Card>
+  
+  <Card title="Domain Property" icon="globe">
+    **Format**: `sc-domain:example.com`
+    
+    - All protocols (http, https)
+    - All subdomains
+    - All paths
+    
+    **Example**: `sc-domain:example.com`
+  </Card>
+</CardGroup>
+
+### API Implementation
+
+Search Console data fetching with retry logic:
+
+```typescript Search Console Client (from search-console.ts)
+export class SearchConsoleClient {
+  async getPerformanceData(
+    siteUrl: string,
+    accessToken: string,
+    startDate: string,
+    endDate: string
+  ): Promise<SearchConsoleData> {
+    return await retryWithBackoff(async () => {
+      const auth = createGoogleAuthClient();
+      auth.setCredentials({ access_token: accessToken });
+      
+      // Fetch overall metrics, keywords, pages, and daily data in parallel
+      const [overallResponse, topKeywords, topPages, dailyData] = 
+        await Promise.all([
+          this.searchconsole.searchanalytics.query({
+            siteUrl,
+            auth,
+            requestBody: {
+              startDate,
+              endDate,
+              dimensions: [],  // No dimensions = overall totals
+              aggregationType: 'auto'
+            }
+          }),
+          this.getTopKeywords(siteUrl, accessToken, 10),
+          this.getTopPages(siteUrl, accessToken, 10),
+          this.getDailyPerformanceData(siteUrl, accessToken, startDate, endDate)
+        ]);
+      
+      return {
+        totalClicks: Math.round(overallResponse.data.rows?.[0]?.clicks || 0),
+        totalImpressions: Math.round(overallResponse.data.rows?.[0]?.impressions || 0),
+        averagePosition: Number((overallResponse.data.rows?.[0]?.position || 0).toFixed(1)),
+        averageCTR: Number(((overallResponse.data.rows?.[0]?.ctr || 0) * 100).toFixed(2)),
+        topKeywords,
+        topPages,
+        dailyData,
+        dateRange: { startDate, endDate }
+      };
+    });
+  }
+}
+```
+
+### Rate Limits
+
+Google Search Console API limits:
+
+<ResponseField name="Queries per day" type="limit">
+  **1,200 requests per day** per project
+  
+  Reportr uses 3-5 queries per report generation.
+</ResponseField>
+
+<ResponseField name="Queries per minute" type="limit">
+  **300 requests per minute**
+  
+  Reportr implements automatic retry with exponential backoff if rate limits are hit.
+</ResponseField>
+
+<ResponseField name="Data freshness" type="constraint">
+  **2-3 day delay**
+  
+  Latest available data is typically 2-3 days old. Reports should use date ranges ending at least 2 days ago.
+</ResponseField>
+
+## Google Analytics 4
+
+### Required Permissions
+
+OAuth Scopes:
+- `https://www.googleapis.com/auth/analytics.readonly`
+- `https://www.googleapis.com/auth/analytics.edit` (for property listing only)
+
+**What this allows**:
+- Read GA4 report data
+- List accessible properties
+- Access admin metadata
+
+**What this does NOT allow**:
+- Modify property settings
+- Change user permissions
+- Delete data
+
+### Available Data
+
+<Tabs>
+  <Tab title="Organic Traffic Metrics">
+    ```typescript
+    {
+      organicSessions: 2345,
+      sessionsDelta: 15.3,  // % change from previous period
+      bounceRate: 42.5,
+      averageSessionDuration: 145.2  // seconds
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Top Landing Pages">
+    ```typescript
+    [
+      {
+        page: "/blog/seo-guide",
+        sessions: 432,
+        users: 387,
+        bounceRate: 38.2,
+        averageSessionDuration: 187.4
+      }
+      // ... top 10 pages
+    ]
+    ```
+  </Tab>
+  
+  <Tab title="Traffic Trend">
+    ```typescript
+    [
+      {
+        date: "2025-01-15",
+        sessions: 78,
+        users: 65
+      }
+      // ... daily data points
+    ]
+    ```
+  </Tab>
+  
+  <Tab title="Traffic Sources">
+    ```typescript
+    [
+      {
+        source: "Organic Search",
+        users: 1234,
+        percentage: 45.6
+      },
+      {
+        source: "Direct",
+        users: 789,
+        percentage: 29.1
+      }
+      // ... all channel groups
+    ]
+    ```
+  </Tab>
+</Tabs>
+
+### GA4 Data API
+
+Reportr uses the GA4 Data API (v1beta):
+
+```typescript Analytics Client (from analytics.ts)
+export class AnalyticsClient {
+  async getOrganicTrafficData(
+    propertyId: string,
+    accessToken: string,
+    startDate: string,
+    endDate: string
+  ): Promise<AnalyticsData> {
+    const auth = createGoogleAuthClient();
+    auth.setCredentials({ access_token: accessToken });
+    
+    // Calculate previous period for comparison
+    const daysDiff = getDaysBetween(startDate, endDate);
+    const prevStartDate = subtractDays(startDate, daysDiff);
+    const prevEndDate = subtractDays(endDate, 1);
+    
+    // Fetch current and previous period in parallel
+    const [currentResponse, previousResponse, landingPages, trafficTrend] = 
+      await Promise.all([
+        this.getOrganicMetrics(propertyId, auth, startDate, endDate),
+        this.getOrganicMetrics(propertyId, auth, prevStartDate, prevEndDate),
+        this.getTopLandingPages(propertyId, accessToken, startDate, endDate),
+        this.getTrafficTrend(propertyId, auth, startDate, endDate)
+      ]);
+    
+    return {
+      organicSessions: currentResponse.sessions,
+      sessionsDelta: calculateChange(
+        currentResponse.sessions, 
+        previousResponse.sessions
+      ),
+      bounceRate: currentResponse.bounceRate,
+      averageSessionDuration: currentResponse.averageSessionDuration,
+      topLandingPages: landingPages,
+      trafficTrend: trafficTrend,
+      dateRange: { startDate, endDate }
+    };
+  }
+}
+```
+
+### Organic Search Filtering
+
+Reportr filters GA4 data to only include organic search traffic:
+
+```typescript Dimension Filter
+{
+  dimensionFilter: {
+    filter: {
+      fieldName: 'sessionDefaultChannelGroup',
+      stringFilter: {
+        matchType: 'EXACT',
+        value: 'Organic Search'
+      }
+    }
+  }
+}
+```
+
+### Rate Limits
+
+<ResponseField name="Requests per day" type="limit">
+  **250,000 requests per day** per project
+</ResponseField>
+
+<ResponseField name="Concurrent requests" type="limit">
+  **10 concurrent requests**
+  
+  Reportr batches requests and uses queuing for high-volume operations.
+</ResponseField>
+
+<ResponseField name="Data freshness" type="constraint">
+  **24-48 hour delay**
+  
+  GA4 data is typically 24-48 hours delayed. Use date ranges ending at least 1 day ago.
+</ResponseField>
+
+## PageSpeed Insights
+
+### API Access
+
+PageSpeed Insights uses a simple API key (no OAuth required):
+
+```typescript PageSpeed Client (from pagespeed.ts)
+export class PageSpeedClient {
+  private readonly apiKey: string;
+  private readonly baseUrl = 'https://www.googleapis.com/pagespeedonline/v5/runPagespeed';
+  
+  constructor() {
+    this.apiKey = process.env.PAGESPEED_API_KEY!;
+  }
+  
+  async getPageSpeedData(url: string): Promise<PageSpeedData> {
+    // Fetch mobile and desktop in parallel
+    const [mobileData, desktopData] = await Promise.all([
+      this.getPageSpeedForStrategy(url, 'mobile'),
+      this.getPageSpeedForStrategy(url, 'desktop')
+    ]);
+    
+    return {
+      url,
+      mobileScore: Math.round(mobileData.score * 100),
+      desktopScore: Math.round(desktopData.score * 100),
+      coreWebVitals: this.extractCoreWebVitals(mobileData),
+      opportunities: this.extractOpportunities(mobileData, desktopData)
+    };
+  }
+}
+```
+
+### Core Web Vitals
+
+PageSpeed Insights measures three key metrics:
+
+<CardGroup cols={3}>
+  <Card title="LCP" icon="gauge-high">
+    **Largest Contentful Paint**
+    
+    Time until main content loads
+    
+    - Good: ≤ 2.5s
+    - Needs Work: 2.5s - 4.0s
+    - Poor: > 4.0s
+  </Card>
+  
+  <Card title="FID" icon="hand-pointer">
+    **First Input Delay**
+    
+    Time until page is interactive
+    
+    - Good: ≤ 100ms
+    - Needs Work: 100ms - 300ms
+    - Poor: > 300ms
+  </Card>
+  
+  <Card title="CLS" icon="maximize">
+    **Cumulative Layout Shift**
+    
+    Visual stability score
+    
+    - Good: ≤ 0.1
+    - Needs Work: 0.1 - 0.25
+    - Poor: > 0.25
+  </Card>
+</CardGroup>
+
+### Performance Opportunities
+
+PageSpeed Insights provides actionable recommendations:
+
+```typescript Opportunity Extraction
+private extractOpportunities(
+  mobileData: PageSpeedResponse,
+  desktopData: PageSpeedResponse
+): PageSpeedOpportunity[] {
+  const opportunities: PageSpeedOpportunity[] = [];
+  
+  // Key audits that provide optimization opportunities
+  const opportunityAudits = [
+    'unused-css-rules',
+    'unused-javascript',
+    'render-blocking-resources',
+    'unminified-css',
+    'modern-image-formats',
+    'uses-webp-images',
+    'server-response-time',
+    // ... 10+ more audits
+  ];
+  
+  for (const auditKey of opportunityAudits) {
+    const audit = mobileData.lighthouseResult.audits[auditKey];
+    
+    if (audit && audit.score < 1) {
+      const savings = this.extractSavings(audit);
+      
+      opportunities.push({
+        title: audit.title,
+        description: audit.description,
+        savings: savings,  // milliseconds
+        impact: this.categorizeImpact(savings)
+      });
+    }
+  }
+  
+  // Sort by impact and return top 10
+  return opportunities
+    .sort((a, b) => b.savings - a.savings)
+    .slice(0, 10);
+}
+```
+
+### Rate Limits
+
+<ResponseField name="Requests per day" type="limit">
+  **25,000 requests per day** (default quota)
+  
+  Can be increased via Google Cloud Console.
+</ResponseField>
+
+<ResponseField name="Analysis time" type="constraint">
+  **20-60 seconds per URL**
+  
+  PageSpeed runs Lighthouse analysis which takes time. Reportr shows progress indicators.
+</ResponseField>
+
+<Warning>
+  **Performance Impact**: PageSpeed Insights actually loads your client's website in Chrome to measure real performance. This can take 30-60 seconds per analysis.
+</Warning>
+
+## Error Handling
+
+Reportr implements comprehensive error handling for Google APIs:
+
+### Retry Strategy
+
+```typescript Exponential Backoff (from error-handling.ts)
+export async function retryWithBackoff<T>(
+  operation: () => Promise<T>,
+  maxRetries: number = 3,
+  baseDelay: number = 1000
+): Promise<T> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (attempt === maxRetries) throw error;
+      
+      // Check if error is retryable
+      if (!isRetryableError(error)) throw error;
+      
+      // Exponential backoff: 1s, 2s, 4s, 8s...
+      const delay = baseDelay * Math.pow(2, attempt);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+}
+
+function isRetryableError(error: any): boolean {
+  const retryableStatusCodes = [429, 500, 502, 503, 504];
+  return retryableStatusCodes.includes(error.statusCode);
+}
+```
+
+### Error Types
+
+<AccordionGroup>
+  <Accordion title="401 Unauthorized" icon="lock">
+    **Cause**: Invalid or expired access token
+    
+    **Reportr Action**:
+    1. Attempt to refresh token using refresh_token
+    2. If refresh fails, mark connection as "needs reauth"
+    3. Notify user to reconnect Google account
+  </Accordion>
+  
+  <Accordion title="403 Forbidden" icon="ban">
+    **Cause**: User doesn't have access to requested resource
+    
+    **Reportr Action**:
+    1. Check if property still exists
+    2. Verify user has proper permissions
+    3. Suggest user check Google Console access
+  </Accordion>
+  
+  <Accordion title="429 Rate Limit" icon="gauge-max">
+    **Cause**: Too many requests to Google API
+    
+    **Reportr Action**:
+    1. Automatic retry with exponential backoff
+    2. Wait 1s → 2s → 4s → 8s between attempts
+    3. Max 3 retries before failing
+  </Accordion>
+  
+  <Accordion title="500/502/503 Server Error" icon="server">
+    **Cause**: Google API temporary outage
+    
+    **Reportr Action**:
+    1. Automatic retry (these errors are transient)
+    2. Exponential backoff between attempts
+    3. Log error for monitoring
+  </Accordion>
+</AccordionGroup>
+
+### Error Handling Implementation
+
+```typescript Google API Error Handler
+export function handleGoogleAPIError(
+  error: any,
+  service: 'gsc' | 'ga4' | 'pagespeed'
+): GoogleAPIError {
+  const statusCode = error.response?.status || error.code || 500;
+  
+  switch (statusCode) {
+    case 401:
+      return {
+        statusCode: 401,
+        message: 'Google authentication expired. Please reconnect.',
+        retryable: false,
+        needsReauth: true
+      };
+      
+    case 403:
+      return {
+        statusCode: 403,
+        message: 'You do not have access to this Google resource.',
+        retryable: false,
+        needsReauth: false
+      };
+      
+    case 429:
+      return {
+        statusCode: 429,
+        message: 'Google API rate limit exceeded. Retrying...',
+        retryable: true,
+        needsReauth: false
+      };
+      
+    default:
+      return {
+        statusCode,
+        message: error.message || 'Failed to fetch Google data',
+        retryable: statusCode >= 500,
+        needsReauth: false
+      };
+  }
+}
+```
+
+## Disconnecting Integrations
+
+Users can disconnect Google accounts:
+
+<Steps>
+  <Step title="Navigate to Client">
+    Open the Manage Client modal for the client you want to disconnect.
+  </Step>
+  
+  <Step title="Find Danger Zone">
+    Scroll to the "Disconnect Google" section.
+  </Step>
+  
+  <Step title="Confirm Disconnection">
+    Click "Disconnect Google Account" and confirm the action.
+  </Step>
+  
+  <Step title="Data Cleared">
+    Reportr removes:
+    - Access and refresh tokens
+    - Selected property IDs
+    - Connection timestamps
+    
+    **Historical reports are preserved** but new reports cannot be generated until reconnected.
+  </Step>
+</Steps>
+
+<Warning>
+  Disconnecting removes API access but does NOT revoke the OAuth grant. To fully revoke access, users should visit [Google Account Permissions](https://myaccount.google.com/permissions) and remove Reportr.
+</Warning>
+
+## Security Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Token Encryption" icon="lock">
+    All OAuth tokens are encrypted in the database using AES-256 encryption before storage.
+  </Card>
+  
+  <Card title="Minimal Scopes" icon="shield-halved">
+    Reportr requests only the minimum scopes needed:
+    - Read-only Search Console
+    - Read-only Analytics
+    - No admin or write permissions
+  </Card>
+  
+  <Card title="Automatic Token Refresh" icon="rotate">
+    Access tokens are refreshed automatically when expired, preventing authentication failures.
+  </Card>
+  
+  <Card title="Error Logging" icon="file-lines">
+    All API errors are logged for debugging while sanitizing sensitive data (tokens redacted).
+  </Card>
+</CardGroup>
+
+## Testing Integrations
+
+After connecting Google, test the integration:
+
+```bash Test API Connectivity
+# 1. Check Search Console connection
+GET /api/clients/{clientId}/google/search-console?startDate=2025-01-01&endDate=2025-01-31
+
+# 2. Check Analytics connection  
+GET /api/clients/{clientId}/google/analytics?startDate=2025-01-01&endDate=2025-01-31
+
+# 3. Check PageSpeed
+GET /api/clients/{clientId}/pagespeed
+
+# Successful responses return 200 with data
+# Failed responses return error codes with details
+```
+
+## Related Resources
+
+<CardGroup cols={3}>
+  <Card title="Client Management" icon="users" href="/features/client-management">
+    Set up clients and manage Google connections
+  </Card>
+  
+  <Card title="Report Generation" icon="file-pdf" href="/features/report-generation">
+    Use Google data to generate reports
+  </Card>
+  
+  <Card title="Google API Docs" icon="book" href="https://developers.google.com">
+    Official Google API documentation
+  </Card>
+</CardGroup>

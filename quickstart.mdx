@@ -1,80 +1,513 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Get started with Reportr in minutes - from signup to your first AI-powered SEO report
 ---
 
-## Get started in three steps
+# Quickstart Guide
 
-Get your documentation site running locally and make your first customization.
-
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+This guide will walk you through setting up Reportr and generating your first AI-powered SEO report in under 10 minutes.
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  You'll need a Google account and access to Google Search Console and Google Analytics 4 for the client website you want to report on.
 </Note>
+
+## Step 1: Sign Up & Authenticate
+
+<Steps>
+  <Step title="Create Your Account">
+    Navigate to the Reportr homepage and click "Sign Up" or "Get Started".
+    
+    <Info>
+      Reportr uses Google OAuth for authentication via NextAuth.js. Your refresh tokens are securely stored to enable automated data collection.
+    </Info>
+  </Step>
+  
+  <Step title="Choose Your Plan">
+    Select a signup flow:
+    
+    <Tabs>
+      <Tab title="Free Trial">
+        Start with the **FREE plan** (no credit card required):
+        - 1 client
+        - 5 reports per month
+        - 14-day trial with full access
+        - Email verification required
+        
+        After signing up with Google, you'll receive a verification email. Click the link to unlock your account and start your trial.
+      </Tab>
+      
+      <Tab title="Paid Plan">
+        Subscribe to **STARTER**, **PROFESSIONAL**, or **AGENCY**:
+        - Immediate access (no email verification)
+        - PayPal subscription required
+        - Choose between trial or direct subscription
+        - White-label features available
+        
+        PayPal integration uses subscription plans with automatic billing cycles.
+      </Tab>
+    </Tabs>
+  </Step>
+  
+  <Step title="Sign In with Google">
+    Click the "Sign in with Google" button. Reportr will request the following permissions:
+    - Basic profile information (name, email)
+    - Access to Google Search Console data
+    - Access to Google Analytics 4 data
+    
+    These permissions enable automated data collection for your reports.
+  </Step>
+  
+  <Step title="Verify Your Email (Free Users Only)">
+    If you chose the FREE plan, check your email for a verification link:
+    
+    ```tsx
+    // Email verification is handled server-side
+    // Free users see a banner on the dashboard until verified
+    if (signupFlow === 'FREE' && !emailVerified) {
+      // Show verification banner
+      return <EmailVerificationBanner />;
+    }
+    ```
+    
+    <Warning>
+      You cannot add clients or generate reports until your email is verified (FREE plan only). Paid users skip this step.
+    </Warning>
+  </Step>
+</Steps>
+
+## Step 2: Add Your First Client
+
+<Steps>
+  <Step title="Navigate to Clients">
+    From the dashboard, click "Manage Clients" or navigate to `/dashboard/clients`.
+  </Step>
+  
+  <Step title="Create a New Client">
+    Click "Add Client" and fill in the required information:
+    
+    <CodeGroup>
+    ```tsx Client Schema
+    const clientSchema = z.object({
+      name: z.string().min(2, 'Name must be at least 2 characters'),
+      domain: z.string().url('Must be a valid URL'),
+      contactName: z.string().optional(),
+      contactEmail: z.string().email('Must be a valid email').optional(),
+    });
+    ```
+    </CodeGroup>
+    
+    **Required fields:**
+    - **Client Name**: Your client's business name (min 2 characters)
+    - **Domain**: Full website URL (e.g., `https://example.com`)
+    
+    **Optional fields:**
+    - **Contact Name**: Primary contact person
+    - **Contact Email**: Client email for notifications
+  </Step>
+  
+  <Step title="Connect Google Services">
+    After creating the client, connect their Google accounts:
+    
+    <Tabs>
+      <Tab title="Google Search Console">
+        1. Click "Connect Search Console"
+        2. Select the property from the list (or enter manually)
+        3. Reportr automatically detects available properties:
+        
+        ```tsx
+        // Properties are fetched from the Search Console API
+        const sites = await searchconsole.sites.list();
+        // Returns: [{ siteUrl, permissionLevel }]
+        ```
+        
+        The system stores the `gscSiteUrl` for future data fetches.
+      </Tab>
+      
+      <Tab title="Google Analytics 4">
+        1. Click "Connect Google Analytics"
+        2. Select the GA4 property from the dropdown
+        3. Reportr fetches all available properties:
+        
+        ```tsx
+        // Properties are fetched from Analytics Admin API
+        const accounts = await analyticsadmin.accounts.list();
+        for (const account of accounts) {
+          const properties = await analyticsadmin.properties.list({
+            filter: `parent:${account.name}`
+          });
+        }
+        ```
+        
+        The system stores the `ga4PropertyId` (e.g., "123456789").
+      </Tab>
+    </Tabs>
+    
+    <Info>
+      Reportr uses your Google OAuth tokens to access these APIs. Tokens are automatically refreshed when they expire.
+    </Info>
+  </Step>
+</Steps>
+
+## Step 3: Generate Your First Report
+
+<Steps>
+  <Step title="Navigate to Report Generation">
+    Click "Generate New Report" from the dashboard or go to `/generate-report`.
+  </Step>
+  
+  <Step title="Configure Report Settings">
+    Select your report parameters:
+    
+    - **Client**: Choose from your connected clients
+    - **Date Range**: Pick start and end dates (e.g., last 30 days)
+    - **Report Title**: Give your report a descriptive name
+    - **Metrics**: Select which metrics to include (default: users, sessions, bounceRate, conversions)
+    
+    <CodeGroup>
+    ```tsx Report Request
+    const reportData = {
+      clientId: "client_abc123",
+      title: "Monthly SEO Report - January 2026",
+      data: {
+        clientName: "Acme Corp",
+        startDate: "2026-01-01",
+        endDate: "2026-01-31",
+        agencyName: "Your Agency", // From user.companyName
+        agencyLogo: "https://...", // From user.logo
+        gscData: { /* Search Console data */ },
+        ga4Data: { /* Analytics data */ }
+      }
+    };
+    ```
+    </CodeGroup>
+  </Step>
+  
+  <Step title="Understand the Report Generation Pipeline">
+    When you click "Generate Report", here's what happens:
+    
+    <Steps>
+      <Step title="API Validation">
+        Your request is validated against plan limits:
+        
+        ```tsx
+        // Check if user can generate another report
+        const limitCheck = await canGenerateReport(user.id);
+        
+        if (!limitCheck.allowed) {
+          return {
+            error: limitCheck.reason,
+            currentCount: limitCheck.currentCount,
+            limit: limitCheck.limit,
+            upgradeRequired: true
+          };
+        }
+        ```
+      </Step>
+      
+      <Step title="Data Collection">
+        Data is fetched in parallel from Google APIs:
+        
+        <Tabs>
+          <Tab title="Search Console">
+            ```tsx
+            const gscData = await getSearchConsoleData(
+              clientId,
+              startDate,
+              endDate,
+              siteUrl
+            );
+            
+            // Returns:
+            {
+              clicks: 12543,
+              impressions: 156789,
+              ctr: "8.00",
+              position: "12.4",
+              topQueries: [ /* top 25 queries */ ],
+              topPages: [ /* top 25 pages */ ],
+              dailyData: [ /* time-series data */ ]
+            }
+            ```
+          </Tab>
+          
+          <Tab title="Analytics 4">
+            ```tsx
+            const ga4Data = await getAnalyticsData(
+              clientId,
+              startDate,
+              endDate,
+              propertyId,
+              ['users', 'sessions', 'bounceRate', 'conversions']
+            );
+            
+            // Returns:
+            {
+              users: 8234,
+              sessions: 12456,
+              bounceRate: "45.23",
+              conversions: 234,
+              topLandingPages: [ /* top pages */ ],
+              trafficTrend: [ /* daily data */ ],
+              dynamicMetrics: { /* traffic sources */ }
+            }
+            ```
+          </Tab>
+        </Tabs>
+      </Step>
+      
+      <Step title="AI Insights (Coming Soon)">
+        Claude API analyzes the data:
+        
+        ```tsx
+        // Future implementation
+        const insights = await generateAIInsights({
+          gscData,
+          ga4Data,
+          previousPeriod // for comparison
+        });
+        
+        // Stores:
+        {
+          aiInsights: [ /* array of insight objects */ ],
+          aiInsightsSource: "ai",
+          aiTokensUsed: 1523,
+          aiCostUsd: 0.02
+        }
+        ```
+      </Step>
+      
+      <Step title="PDF Generation">
+        A branded PDF is created with React-PDF:
+        
+        ```tsx
+        const pdf = await generatePDF({
+          data: reportData,
+          branding: {
+            companyName: user.companyName,
+            primaryColor: user.primaryColor,
+            logo: user.logo
+          }
+        });
+        
+        // Upload to Vercel Blob
+        const pdfUrl = await uploadToBlob(pdf);
+        ```
+      </Step>
+      
+      <Step title="Report Saved">
+        The report is saved to the database:
+        
+        ```tsx
+        const report = await prisma.report.create({
+          data: {
+            title: "Monthly SEO Report - January 2026",
+            status: "COMPLETED",
+            data: reportData,
+            pdfUrl: pdfUrl,
+            processingStartedAt: new Date(),
+            processingCompletedAt: new Date(),
+            clientId: clientId,
+            userId: user.id
+          }
+        });
+        ```
+      </Step>
+    </Steps>
+  </Step>
+  
+  <Step title="View Your Report">
+    Once generation completes (typically < 3 minutes):
+    
+    - Navigate to `/reports` to see all your reports
+    - Click on your new report to view details
+    - Download the PDF by clicking the download button
+    - Share the PDF link with your client
+    
+    <Info>
+      Reports are stored permanently and can be regenerated at any time (subject to plan limits).
+    </Info>
+  </Step>
+</Steps>
+
+## Step 4: Customize Your Branding (Professional & Agency)
+
+<Steps>
+  <Step title="Access Settings">
+    Navigate to your profile settings or `/settings`.
+  </Step>
+  
+  <Step title="Configure White-Label Settings">
+    Customize your agency branding:
+    
+    ```tsx
+    // User model fields
+    {
+      companyName: "Your Agency Name",       // Defaults to "{firstName}'s Agency"
+      primaryColor: "#3B82F6",              // Hex color code
+      logo: "https://blob.vercel.com/...", // Uploaded logo URL
+      whiteLabelEnabled: true               // Professional/Agency plans
+    }
+    ```
+    
+    <Tabs>
+      <Tab title="Company Name">
+        Your agency name appears on all generated reports.
+        
+        **Default**: `{firstName}'s Agency`
+        
+        **Example**: "Digital Marketing Pros"
+      </Tab>
+      
+      <Tab title="Primary Color">
+        Choose your brand color for report headers, charts, and accents.
+        
+        **Default**: `#3B82F6` (blue)
+        
+        **Format**: 6-digit hex code
+      </Tab>
+      
+      <Tab title="Logo Upload">
+        Upload your agency logo (PNG or SVG recommended).
+        
+        - **Max size**: 2MB
+        - **Recommended dimensions**: 300x100px
+        - **Format**: PNG with transparent background
+      </Tab>
+    </Tabs>
+  </Step>
+  
+  <Step title="Preview Your Branding">
+    Generate a test report to see how your branding looks on PDFs.
+    
+    <Warning>
+      White-label features are only available on **Professional** and **Agency** plans, or as a $20/mo add-on to **Starter**.
+    </Warning>
+  </Step>
+</Steps>
+
+## Understanding Your Dashboard
+
+Your dashboard at `/dashboard` shows:
+
+<CardGroup cols={2}>
+  <Card title="Usage Statistics" icon="chart-bar">
+    Track clients used and reports generated this billing cycle:
+    
+    ```tsx
+    // FREE: 1 client, 5 reports/month
+    // STARTER: 5 clients, 25 reports/month
+    // PROFESSIONAL: 15 clients, 75 reports/month
+    // AGENCY: 50 clients, 250 reports/month
+    ```
+  </Card>
+  
+  <Card title="Recent Reports" icon="file-text">
+    View your 5 most recent reports with status:
+    - PENDING (queued)
+    - PROCESSING (generating)
+    - COMPLETED (ready)
+    - FAILED (error occurred)
+  </Card>
+  
+  <Card title="Active Clients" icon="users">
+    Quick access to your top 3 clients with report counts and setup status.
+  </Card>
+  
+  <Card title="Quick Actions" icon="bolt">
+    One-click access to:
+    - Manage Clients
+    - Generate New Report
+    - View All Reports
+  </Card>
+</CardGroup>
+
+## Billing Cycles
+
+Reportr uses 30-day billing cycles:
+
+```tsx
+// Billing cycle automatically resets every 30 days
+const cycleInfo = await getBillingCycleInfo(userId);
+
+// Returns:
+{
+  cycleStart: Date,
+  cycleEnd: Date,
+  daysRemaining: number
+}
+
+// Report limits reset at the start of each cycle
+```
+
+<Info>
+  Your report limit resets every billing cycle (30 days from subscription start), not on the 1st of the month.
+</Info>
+
+## Next Steps
+
+<CardGroup cols={3}>
+  <Card title="Authentication" icon="key" href="/authentication">
+    Learn how Google OAuth works
+  </Card>
+  
+  <Card title="API Reference" icon="code" href="/api/clients/create">
+    Integrate Reportr programmatically
+  </Card>
+  
+  <Card title="White-Label Setup" icon="palette" href="/features/white-label-branding">
+    Customize your agency branding
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Cannot add clients (FREE plan)">
+    **Issue**: "Please verify your email before adding clients"
+    
+    **Solution**:
+    1. Check your email for the verification link
+    2. Click the link to verify your account
+    3. Refresh the dashboard
+    4. You can now add clients
+    
+    ```tsx
+    // Free users must verify email first
+    const hasAccess = 
+      paypalSubscriptionId || // Paid users
+      (signupFlow === 'FREE' && emailVerified); // Free users (verified)
+    ```
+  </Accordion>
+  
+  <Accordion title="Google API connection fails">
+    **Issue**: "Access denied to Search Console" or "Analytics property not found"
+    
+    **Solution**:
+    1. Ensure you have access to the property in Google Search Console / Analytics
+    2. Verify the property URL/ID is correct
+    3. Reconnect your Google account from client settings
+    4. Check that the property is verified in Search Console
+    
+    Common errors:
+    - 403: Access denied (you don't have permission)
+    - 404: Property not found (wrong URL/ID)
+    - 401: Authentication failed (token expired, reconnect)
+  </Accordion>
+  
+  <Accordion title="Report generation limit reached">
+    **Issue**: "You've reached your limit of X reports per month"
+    
+    **Solution**:
+    1. Check your billing cycle end date on the dashboard
+    2. Wait for the cycle to reset (automatic)
+    3. Or upgrade to a higher plan for more reports
+    
+    ```tsx
+    // Plan limits
+    FREE: 5 reports/month
+    STARTER: 25 reports/month
+    PROFESSIONAL: 75 reports/month
+    AGENCY: 250 reports/month
+    ```
+  </Accordion>
+</AccordionGroup>

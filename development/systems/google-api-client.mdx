@@ -1,0 +1,616 @@
+---
+title: Google API Client System
+description: Complete reference for Google API integration architecture including Search Console, Analytics 4, and PageSpeed APIs
+---
+
+# Google API Client System
+
+The Google API client system provides a robust interface for fetching SEO and analytics data from Google's suite of APIs. It implements retry logic, error handling, rate limiting, and OAuth 2.0 authentication.
+
+## Architecture Overview
+
+### Core Components
+
+The system is organized into specialized client classes:
+
+```
+src/lib/google/
+├── config.ts              # OAuth client & configuration
+├── error-handling.ts      # Centralized error handling
+├── analytics.ts           # Google Analytics 4 API client
+├── search-console.ts      # Search Console API client
+└── pagespeed.ts          # PageSpeed Insights API client
+```
+
+### Authentication Flow
+
+All Google API clients use OAuth 2.0 with the following scopes:
+
+```typescript:src/lib/google/config.ts
+export const GOOGLE_API_SCOPES = [
+  'https://www.googleapis.com/auth/webmasters.readonly',
+  'https://www.googleapis.com/auth/analytics.readonly',
+] as const;
+```
+
+**Key Functions:**
+- `createGoogleAuthClient()` - Creates OAuth2 client instance
+- `refreshAccessToken(refreshToken)` - Refreshes expired tokens
+
+## Analytics Client
+
+### Class: `AnalyticsClient`
+
+Handles all Google Analytics 4 (GA4) data retrieval.
+
+**Location:** `src/lib/google/analytics.ts:6`
+
+### Key Methods
+
+#### `getOrganicTrafficData()`
+
+Retrieves comprehensive organic traffic data with period-over-period comparison.
+
+```typescript:src/lib/google/analytics.ts
+async getOrganicTrafficData(
+  propertyId: string,
+  accessToken: string,
+  startDate: string,
+  endDate: string
+): Promise<AnalyticsData>
+```
+
+**Data Flow:**
+1. Calculates previous period dates for comparison
+2. Fetches current and previous metrics in parallel
+3. Retrieves landing pages and traffic trends
+4. Calculates percentage changes
+5. Returns aggregated `AnalyticsData` object
+
+**Example Usage:**
+
+```typescript
+import { analyticsClient } from '@/lib/google/analytics';
+
+const data = await analyticsClient.getOrganicTrafficData(
+  '123456789',
+  accessToken,
+  '2024-01-01',
+  '2024-01-31'
+);
+
+console.log(data.organicSessions); // 5420
+console.log(data.sessionsDelta);   // 12.5% change
+```
+
+#### `getTopLandingPages()`
+
+Retrieves top landing pages from organic search traffic.
+
+```typescript:src/lib/google/analytics.ts
+async getTopLandingPages(
+  propertyId: string,
+  accessToken: string,
+  startDate: string,
+  endDate: string,
+  limit: number = 10
+): Promise<LandingPageData[]>
+```
+
+**Returns:** Array of landing pages with sessions, users, bounce rate, and session duration.
+
+**Implementation Details:**
+- Filters by `sessionDefaultChannelGroup = 'Organic Search'`
+- Orders by sessions descending
+- Includes bounce rate and engagement metrics
+
+#### `getTrafficSources()`
+
+Breaks down traffic by channel (Organic, Direct, Social, etc.).
+
+**Location:** `src/lib/google/analytics.ts:257`
+
+**Returns:**
+```typescript
+Array<{
+  source: string;      // e.g., "Organic Search"
+  users: number;       // 1250
+  percentage: number;  // 42.5
+}>
+```
+
+#### `getConversionData()`
+
+Retrieves conversion metrics for ecommerce tracking.
+
+**Location:** `src/lib/google/analytics.ts:310`
+
+```typescript
+const conversions = await analyticsClient.getConversionData(
+  propertyId,
+  accessToken,
+  startDate,
+  endDate
+);
+
+// Returns:
+// {
+//   totalConversions: 145,
+//   conversionRate: 2.3,
+//   organicConversions: 87,
+//   organicConversionRate: 3.1
+// }
+```
+
+### Property Management
+
+#### `getAccessibleProperties()`
+
+Lists all GA4 properties a user has access to.
+
+**Location:** `src/lib/google/analytics.ts:419`
+
+**Data Flow:**
+1. Lists all Google Analytics accounts
+2. For each account, lists associated properties
+3. Extracts property IDs and display names
+4. Returns formatted array
+
+```typescript
+const properties = await analyticsClient.getAccessibleProperties(accessToken);
+// [
+//   { id: "123456789", name: "My Website" },
+//   { id: "987654321", name: "Client Site" }
+// ]
+```
+
+## Search Console Client
+
+### Class: `SearchConsoleClient`
+
+Handles Google Search Console performance data.
+
+**Location:** `src/lib/google/search-console.ts:6`
+
+### Key Methods
+
+#### `getPerformanceData()`
+
+Retrieves comprehensive search performance metrics.
+
+```typescript:src/lib/google/search-console.ts
+async getPerformanceData(
+  siteUrl: string,
+  accessToken: string,
+  startDate: string,
+  endDate: string
+): Promise<SearchConsoleData>
+```
+
+**Parallel Data Fetching:**
+
+```typescript:src/lib/google/search-console.ts
+const [topKeywords, topPages, dailyData] = await Promise.all([
+  this.getTopKeywords(siteUrl, accessToken, 10),
+  this.getTopPages(siteUrl, accessToken, 10),
+  this.getDailyPerformanceData(siteUrl, accessToken, startDate, endDate)
+]);
+```
+
+**Returns:**
+- `totalClicks` - Total search clicks
+- `totalImpressions` - Total search impressions
+- `averagePosition` - Average ranking position
+- `averageCTR` - Click-through rate percentage
+- `topKeywords` - Top 10 performing keywords
+- `topPages` - Top 10 landing pages
+- `dailyData` - Time-series data for charts
+
+#### `getTopKeywords()`
+
+Retrieves top performing search queries.
+
+**Location:** `src/lib/google/search-console.ts:82`
+
+```typescript
+const keywords = await searchConsoleClient.getTopKeywords(
+  'https://example.com/',
+  accessToken,
+  10
+);
+
+// Returns:
+// [
+//   {
+//     keyword: "seo reporting tool",
+//     clicks: 234,
+//     impressions: 5420,
+//     ctr: 4.32,
+//     position: 3.2
+//   }
+// ]
+```
+
+#### `getPerformanceComparison()`
+
+Compares metrics between two time periods.
+
+**Location:** `src/lib/google/search-console.ts:168`
+
+**Use Case:** Calculating month-over-month or year-over-year changes.
+
+```typescript
+const comparison = await searchConsoleClient.getPerformanceComparison(
+  siteUrl,
+  accessToken,
+  '2024-02-01',
+  '2024-02-29',
+  '2024-01-01',
+  '2024-01-31'
+);
+
+// Returns:
+// {
+//   current: { clicks: 1234, impressions: 45000, ctr: 2.7, position: 12.5 },
+//   previous: { clicks: 1100, impressions: 42000, ctr: 2.6, position: 13.1 },
+//   changes: { clicksChange: 12.2, impressionsChange: 7.1, ctrChange: 3.8, positionChange: -4.6 }
+// }
+```
+
+#### `getDailyPerformanceData()`
+
+Retrieves time-series data for trend visualization.
+
+**Location:** `src/lib/google/search-console.ts:367`
+
+**Returns daily metrics sorted by date:**
+
+```typescript
+const dailyData = await searchConsoleClient.getDailyPerformanceData(
+  siteUrl,
+  accessToken,
+  startDate,
+  endDate
+);
+
+// Used for charts in reports
+```
+
+### Site Management
+
+#### `getVerifiedSites()`
+
+Lists all sites the user has verified in Search Console.
+
+**Location:** `src/lib/google/search-console.ts:253`
+
+```typescript
+const sites = await searchConsoleClient.getVerifiedSites(accessToken);
+// ["https://example.com/", "https://another-site.com/"]
+```
+
+#### `formatSiteUrl()`
+
+Static helper to format domains for Search Console API.
+
+**Location:** `src/lib/google/search-console.ts:310`
+
+```typescript
+SearchConsoleClient.formatSiteUrl('example.com');
+// Returns: "https://example.com/"
+```
+
+## PageSpeed Client
+
+### Class: `PageSpeedClient`
+
+Handles PageSpeed Insights API integration.
+
+**Location:** `src/lib/google/pagespeed.ts:38`
+
+**Authentication:** Uses API key (not OAuth)
+
+```typescript:src/lib/google/pagespeed.ts
+const apiKey = process.env.PAGESPEED_API_KEY;
+```
+
+### Key Methods
+
+#### `getPageSpeedData()`
+
+Retrieves comprehensive performance data for both mobile and desktop.
+
+```typescript:src/lib/google/pagespeed.ts
+async getPageSpeedData(url: string): Promise<PageSpeedData>
+```
+
+**Parallel Analysis:**
+
+```typescript:src/lib/google/pagespeed.ts
+const [mobileData, desktopData] = await Promise.all([
+  this.getPageSpeedForStrategy(url, 'mobile'),
+  this.getPageSpeedForStrategy(url, 'desktop')
+]);
+```
+
+**Returns:**
+- `mobileScore` - Mobile performance score (0-100)
+- `desktopScore` - Desktop performance score (0-100)
+- `coreWebVitals` - LCP, FID, CLS metrics
+- `opportunities` - Actionable performance improvements
+
+#### `analyzeCoreWebVitals()`
+
+Analyzes Core Web Vitals with Google's thresholds.
+
+**Location:** `src/lib/google/pagespeed.ts:251`
+
+**Thresholds:**
+- **LCP (Largest Contentful Paint)**
+  - Good: ≤ 2500ms
+  - Needs Improvement: 2501-4000ms
+  - Poor: > 4000ms
+
+- **FID (First Input Delay)**
+  - Good: ≤ 100ms
+  - Needs Improvement: 101-300ms
+  - Poor: > 300ms
+
+- **CLS (Cumulative Layout Shift)**
+  - Good: ≤ 0.1
+  - Needs Improvement: 0.11-0.25
+  - Poor: > 0.25
+
+```typescript
+const analysis = await pageSpeedClient.analyzeCoreWebVitals('https://example.com');
+
+// Returns:
+// {
+//   overall: 'needs-improvement',
+//   lcp: { value: 2800, rating: 'needs-improvement' },
+//   fid: { value: 85, rating: 'good' },
+//   cls: { value: 0.15, rating: 'needs-improvement' },
+//   recommendations: [
+//     'Optimize images and reduce server response times...',
+//     'Add size attributes to images...'
+//   ]
+// }
+```
+
+#### `getMultiplePagesSpeeds()`
+
+Analyzes multiple pages with rate limit protection.
+
+**Location:** `src/lib/google/pagespeed.ts:341`
+
+**Features:**
+- Processes URLs in chunks to avoid rate limiting
+- Adds 2-second delay between chunks
+- Returns success/error status for each URL
+
+```typescript
+const results = await pageSpeedClient.getMultiplePagesSpeeds(
+  ['https://example.com/', 'https://example.com/about', 'https://example.com/blog'],
+  3 // maxConcurrent
+);
+```
+
+## Error Handling
+
+### Centralized Error Handling
+
+**Location:** `src/lib/google/error-handling.ts`
+
+#### `handleGoogleAPIError()`
+
+Classifies and normalizes API errors.
+
+```typescript:src/lib/google/error-handling.ts
+export const handleGoogleAPIError = (
+  error: any,
+  service: 'gsc' | 'ga4' | 'pagespeed'
+): GoogleAPIError
+```
+
+**Error Categories:**
+
+1. **401 Unauthorized** - Token expired, needs re-authentication
+   ```typescript
+   { statusCode: 401, retryable: false, needsReauth: true }
+   ```
+
+2. **429 Rate Limit** - Too many requests
+   ```typescript
+   { statusCode: 429, retryable: true }
+   ```
+
+3. **403 Quota Exceeded** - Daily quota exhausted
+   ```typescript
+   { statusCode: 403, retryable: false }
+   ```
+
+4. **5xx Server Errors** - Google API issues
+   ```typescript
+   { statusCode: 500, retryable: true }
+   ```
+
+#### `retryWithBackoff()`
+
+Exponential backoff retry logic.
+
+**Location:** `src/lib/google/error-handling.ts:72`
+
+```typescript
+export const retryWithBackoff = async <T>(
+  fn: () => Promise<T>,
+  maxRetries: number = 3,
+  baseDelay: number = 1000
+): Promise<T>
+```
+
+**Algorithm:**
+- Attempt 1: Immediate
+- Attempt 2: Wait ~1000ms + random jitter
+- Attempt 3: Wait ~2000ms + random jitter
+- Attempt 4: Wait ~4000ms + random jitter
+
+**Jitter:** Prevents thundering herd by adding 0-1000ms random delay.
+
+## Rate Limiting
+
+### API Quotas
+
+**Configuration:** `src/lib/google/config.ts:34`
+
+```typescript:src/lib/google/config.ts
+export const API_RATE_LIMITS = {
+  gsc: {
+    requestsPerMinute: 100,
+    requestsPerDay: 1000,
+  },
+  ga4: {
+    requestsPerMinute: 100,
+    requestsPerDay: 50000,
+  },
+  pagespeed: {
+    requestsPerMinute: 25,
+    requestsPerDay: 25000,
+  },
+} as const;
+```
+
+### Rate Limit Strategy
+
+1. **Retry on 429** - Wait and retry with exponential backoff
+2. **Chunk Processing** - Break large requests into smaller batches
+3. **Delay Between Chunks** - Add artificial delays (e.g., 2 seconds)
+4. **Parallel Requests** - Fetch independent data sources simultaneously
+
+## Integration Points
+
+### Report Generation Pipeline
+
+**Used by:** API routes, background jobs, report generation queue
+
+```typescript
+// Example: Generate report with all APIs
+import { analyticsClient } from '@/lib/google/analytics';
+import { searchConsoleClient } from '@/lib/google/search-console';
+import { pageSpeedClient } from '@/lib/google/pagespeed';
+
+const [gscData, ga4Data, pageSpeedData] = await Promise.all([
+  searchConsoleClient.getPerformanceData(siteUrl, token, start, end),
+  analyticsClient.getOrganicTrafficData(propertyId, token, start, end),
+  pageSpeedClient.getPageSpeedData(siteUrl)
+]);
+```
+
+### Database Models
+
+**Client Model:** Stores Google API connection status
+
+```prisma
+model Client {
+  googleConnected      Boolean
+  googleAccessToken    String?  @db.Text
+  googleRefreshToken   String?  @db.Text
+  googleTokenExpiry    DateTime?
+  gscSiteUrl          String?
+  ga4PropertyId       String?
+}
+```
+
+### Token Refresh
+
+**Location:** Used throughout all client methods
+
+```typescript
+import { refreshAccessToken } from '@/lib/google/config';
+
+// When token expires
+if (error.needsReauth) {
+  const { accessToken, expiryDate } = await refreshAccessToken(client.googleRefreshToken);
+  // Update database with new token
+  // Retry the API call
+}
+```
+
+## Testing
+
+### Validation Methods
+
+Each client includes validation methods for testing connectivity:
+
+```typescript
+// Test Search Console access
+await searchConsoleClient.validateSiteAccess(siteUrl, accessToken);
+
+// Test Analytics access
+await analyticsClient.validatePropertyAccess(propertyId, accessToken);
+
+// Test PageSpeed URL format
+PageSpeedClient.isValidUrl('https://example.com');
+```
+
+## Performance Considerations
+
+### Optimization Strategies
+
+1. **Parallel Fetching** - All clients use `Promise.all()` for independent requests
+2. **Selective Data** - Use `limit` parameters to reduce payload size
+3. **Caching** - Results should be cached at application level
+4. **Timeout Protection** - All requests include timeout handling
+5. **Minimal Dimensions** - Only request necessary data dimensions
+
+### Example: Optimized Report Generation
+
+```typescript
+// Fast: Parallel requests with limits
+const [keywords, pages, traffic] = await Promise.all([
+  searchConsoleClient.getTopKeywords(siteUrl, token, 10),  // Only top 10
+  searchConsoleClient.getTopPages(siteUrl, token, 10),
+  analyticsClient.getOrganicTrafficData(propertyId, token, start, end)
+]);
+
+// Slow: Sequential requests
+const keywords = await searchConsoleClient.getTopKeywords(siteUrl, token, 10);
+const pages = await searchConsoleClient.getTopPages(siteUrl, token, 10);
+const traffic = await analyticsClient.getOrganicTrafficData(propertyId, token, start, end);
+```
+
+## Common Issues
+
+### Token Expiration
+
+**Problem:** 401 errors after token expires  
+**Solution:** Implement automatic refresh before making API calls
+
+```typescript
+if (isTokenExpired(client.googleTokenExpiry)) {
+  const { accessToken, expiryDate } = await refreshAccessToken(client.googleRefreshToken);
+  await updateClientTokens(client.id, accessToken, expiryDate);
+}
+```
+
+### Rate Limiting
+
+**Problem:** 429 errors during bulk operations  
+**Solution:** Use chunked processing with delays
+
+```typescript
+// Process in chunks of 3 with 2-second delays
+await pageSpeedClient.getMultiplePagesSpeeds(urls, 3);
+```
+
+### Quota Exceeded
+
+**Problem:** 403 errors when daily quota exhausted  
+**Solution:** Track API usage in database, show user remaining quota
+
+```typescript
+model ApiUsage {
+  service       String  // 'gsc' | 'ga4' | 'pagespeed'
+  requestCount  Int
+  date          DateTime
+}
+```

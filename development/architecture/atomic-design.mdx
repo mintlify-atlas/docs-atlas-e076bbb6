@@ -1,0 +1,604 @@
+---
+title: Atomic Design System
+description: Comprehensive guide to Reportr's atomic design component architecture and white-label theming system
+---
+
+## Overview
+
+Reportr implements a complete atomic design system for building consistent, reusable, and scalable UI components. The architecture follows Brad Frost's atomic design methodology, organizing components from smallest to largest: **Atoms → Molecules → Organisms → Templates → Pages**.
+
+**Location**: `src/components/`
+
+## Design Hierarchy
+
+### Atoms
+**Location**: `src/components/atoms/`
+
+Basic building blocks - the smallest functional components that can't be broken down further.
+
+#### Available Atoms
+
+- **Button** - Primary UI interaction component
+- **Input** - Text input fields
+- **Textarea** - Multi-line text input
+- **Select** - Dropdown selection
+- **Checkbox** - Boolean toggle input
+- **Radio** - Single selection from options
+- **Switch** - Toggle switch component
+- **Typography** - Text styling (H1-H6, body, caption)
+- **Icon** - Icon wrapper component
+- **Card** - Container with elevation
+- **Link** - Styled anchor elements
+- **Logo** - Brand logo component
+- **Divider** - Visual separator
+- **Spinner** - Loading indicator
+- **Skeleton** - Loading placeholder
+- **Progress** - Progress bar
+- **Tooltip** - Hover information
+- **Container** - Layout wrapper
+- **Flex** - Flexbox layout
+- **Grid** - Grid layout
+- **Spacer** - Spacing utility
+
+#### Example: Button Atom
+
+**File**: `src/components/atoms/Button.tsx`
+
+```typescript
+import React from 'react'
+import { Loader2 } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import type { ButtonProps } from '@/types'
+
+const Button = React.forwardRef<HTMLButtonElement, ButtonProps>({
+  variant = 'primary',
+  size = 'md',
+  loading = false,
+  disabled = false,
+  children,
+  className,
+  type = 'button',
+  ...props
+}, ref) => {
+  // Variant styles
+  const variants = {
+    primary: 'bg-brand-600 text-white hover:bg-brand-700',
+    secondary: 'bg-neutral-100 text-neutral-900 hover:bg-neutral-200',
+    outline: 'border border-brand-600 text-brand-600 hover:bg-brand-50',
+    ghost: 'text-neutral-600 hover:bg-neutral-100',
+    success: 'bg-success-600 text-white hover:bg-success-700',
+    warning: 'bg-warning-600 text-white hover:bg-warning-700',
+    error: 'bg-error-600 text-white hover:bg-error-700',
+  }
+  
+  const sizes = {
+    xs: 'px-2.5 py-1.5 text-xs h-7',
+    sm: 'px-3 py-2 text-sm h-8',
+    md: 'px-4 py-2.5 text-sm h-10',
+    lg: 'px-6 py-3 text-base h-12',
+    xl: 'px-8 py-4 text-lg h-14',
+  }
+
+  return (
+    <button
+      ref={ref}
+      type={type}
+      disabled={disabled || loading}
+      className={cn(
+        'inline-flex items-center justify-center rounded-md font-medium',
+        'transition-all duration-200 focus:outline-none focus:ring-2',
+        'disabled:opacity-50 disabled:cursor-not-allowed',
+        'active:transform active:scale-95',
+        variants[variant],
+        sizes[size],
+        className
+      )}
+      {...props}
+    >
+      {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+      {children}
+    </button>
+  )
+})
+```
+
+**Features:**
+- 7 variants (primary, secondary, outline, ghost, success, warning, error)
+- 5 sizes (xs, sm, md, lg, xl)
+- Loading state with spinner
+- Full TypeScript typing
+- Forwarded refs for form integration
+- Accessibility built-in
+
+### Molecules
+**Location**: `src/components/molecules/`
+
+Simple combinations of atoms creating functional units.
+
+#### Available Molecules
+
+- **MetricCard** - Display metric with change indicator
+- **UserMenu** - User profile dropdown
+- **FormField** - Input with label and error
+- **SearchBox** - Search input with icon
+- **StatusBadge** - Colored status indicator
+- **EmptyState** - No data placeholder
+- **LoadingCard** - Card loading state
+- **DropdownMenu** - Dropdown menu component
+- **ButtonGroup** - Grouped button actions
+- **TabGroup** - Tab navigation
+- **ThemeSelector** - Color picker
+- **PasswordInput** - Password field with toggle
+- **TrialCountdown** - Trial expiry countdown
+- **UsageCard** - Usage statistics display
+- **UsageProgressBar** - Usage limit visualization
+- **BillingCard** - Subscription details
+- **PaymentHistory** - Payment transaction list
+- **EmailVerificationBanner** - Email verification prompt
+- **PayPalSubscribeButton** - Subscription button
+
+#### Example: MetricCard Molecule
+
+**File**: `src/components/molecules/MetricCard.tsx`
+
+```typescript
+import { TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { Card, Typography, Icon } from '@/components/atoms'
+import { cn } from '@/lib/utils'
+
+export interface MetricCardProps {
+  title: string
+  value: string | number
+  change?: number
+  changeType?: 'positive' | 'negative' | 'neutral'
+  icon?: React.ReactNode
+  loading?: boolean
+  className?: string
+}
+
+export const MetricCard = ({
+  title,
+  value,
+  change,
+  changeType = 'neutral',
+  icon,
+  loading = false,
+  className,
+}: MetricCardProps) => {
+  const formatChange = (changeValue: number) => {
+    return `${Math.abs(changeValue * 100).toFixed(1)}%`
+  }
+
+  const getChangeIcon = () => {
+    switch (changeType) {
+      case 'positive':
+        return <TrendingUp className="h-3 w-3 text-success-500" />
+      case 'negative':
+        return <TrendingDown className="h-3 w-3 text-error-500" />
+      default:
+        return <Minus className="h-3 w-3 text-neutral-400" />
+    }
+  }
+
+  return (
+    <Card className={cn('p-4 sm:p-6', className)}>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <Typography variant="caption" className="text-neutral-500">
+            {title}
+          </Typography>
+          {icon && <div className="text-neutral-400">{icon}</div>}
+        </div>
+        
+        <Typography variant="h3" className="font-bold text-neutral-900">
+          {typeof value === 'number' ? value.toLocaleString() : value}
+        </Typography>
+        
+        {change !== undefined && (
+          <div className="flex items-center gap-1">
+            {getChangeIcon()}
+            <Typography variant="caption" className={cn(
+              'font-medium',
+              changeType === 'positive' && 'text-success-500',
+              changeType === 'negative' && 'text-error-500',
+              changeType === 'neutral' && 'text-neutral-500'
+            )}>
+              {change > 0 ? '+' : ''}{formatChange(change)}
+            </Typography>
+            <Typography variant="caption" className="text-neutral-500">
+              vs last period
+            </Typography>
+          </div>
+        )}
+      </div>
+    </Card>
+  )
+}
+```
+
+**Combines:**
+- Card atom (container)
+- Typography atom (text)
+- Icon atom (visual indicators)
+- Custom logic for change calculation
+
+### Organisms
+**Location**: `src/components/organisms/`
+
+Complex components composed of molecules and atoms.
+
+#### Available Organisms
+
+- **DashboardSidebar** - Main navigation sidebar
+- **DashboardMobileHeader** - Mobile navigation
+- **NavigationBar** - Top navigation bar
+- **UserMenu** - User account dropdown
+- **StatsOverview** - Dashboard statistics panel
+- **RecentActivity** - Activity feed
+- **BrandingPreview** - White-label preview
+- **Modal** - Modal dialog system
+- **ManageClientModal** - Client CRUD modal
+- **PropertyManagementModal** - Google property selector
+- **MetricSelectorModal** - Custom metrics selector
+- **UpgradeModal** - Subscription upgrade prompt
+- **UpgradePromptModal** - Usage limit upgrade prompt
+- **AddCustomMetricModal** - Custom metric creator
+
+#### Example: DashboardSidebar Organism
+
+**File**: `src/components/organisms/DashboardSidebar.tsx`
+
+```typescript
+import React from 'react'
+import Link from 'next/link'
+import Image from 'next/image'
+import { usePathname } from 'next/navigation'
+import { LayoutDashboard, Users, FileText, Settings, Plus } from 'lucide-react'
+import { Button, Skeleton } from '@/components/atoms'
+import { UserMenu } from '@/components/organisms/UserMenu'
+import { useUserProfile } from '@/hooks/useUserProfile'
+import { cn, getInitials } from '@/lib/utils'
+
+export const DashboardSidebar = ({ mobile = false, onClose }) => {
+  const pathname = usePathname()
+  const { profile, loading } = useUserProfile()
+
+  const navigation = [
+    { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+    { name: 'Clients', href: '/dashboard/clients', icon: Users },
+    { name: 'Reports Library', href: '/reports', icon: FileText },
+    { name: 'Settings', href: '/settings', icon: Settings },
+  ]
+
+  const renderLogo = () => {
+    const isWhiteLabel = profile?.whiteLabelEnabled
+    const logoUrl = profile?.logo
+    const companyName = profile?.companyName || 'My Agency'
+
+    if (isWhiteLabel && logoUrl) {
+      return (
+        <div className="flex items-center space-x-2">
+          <Image
+            src={logoUrl}
+            alt={`${companyName} logo`}
+            width={40}
+            height={40}
+            className="object-contain rounded-md"
+          />
+          <span className="text-lg font-semibold">{companyName}</span>
+        </div>
+      )
+    } else if (isWhiteLabel) {
+      return (
+        <div className="flex items-center space-x-2">
+          <div
+            className="flex h-10 w-10 items-center justify-center rounded-md text-white font-semibold"
+            style={{ backgroundColor: profile?.primaryColor }}
+          >
+            {getInitials(companyName)}
+          </div>
+          <span className="text-lg font-semibold">{companyName}</span>
+        </div>
+      )
+    } else {
+      return <span className="text-lg font-semibold">Reportr</span>
+    }
+  }
+
+  return (
+    <div className="flex h-full flex-col bg-white border-r">
+      {/* Logo */}
+      <div className="flex h-16 items-center px-6 border-b">
+        {loading ? <Skeleton width={120} /> : renderLogo()}
+      </div>
+
+      {/* Navigation */}
+      <nav className="flex-1 px-4 py-6 space-y-1">
+        {navigation.map((item) => {
+          const isActive = pathname === item.href
+          return (
+            <Link
+              key={item.name}
+              href={item.href}
+              className={cn(
+                'group flex items-center px-3 py-2 text-sm font-medium rounded-md',
+                isActive ? 'bg-brand-50 text-brand-700' : 'hover:bg-gray-100'
+              )}
+            >
+              <item.icon className="mr-3 h-5 w-5" />
+              {item.name}
+            </Link>
+          )
+        })}
+      </nav>
+
+      {/* Generate Report Button */}
+      <div className="px-4 pb-6">
+        <Link href="/generate-report">
+          <Button className="w-full" variant="primary">
+            <Plus className="h-4 w-4 mr-2" />
+            Generate Report
+          </Button>
+        </Link>
+      </div>
+
+      {/* User Menu */}
+      <div className="px-4 pb-4 border-t pt-4">
+        <UserMenu />
+      </div>
+    </div>
+  )
+}
+```
+
+**Combines:**
+- Multiple atoms (Button, Skeleton, etc.)
+- UserMenu organism
+- Navigation logic
+- White-label branding
+- Responsive design
+
+### Templates
+**Location**: `src/components/templates/`
+
+Page layouts and structural patterns.
+
+#### Available Templates
+
+- **DashboardLayout** - Main dashboard layout with sidebar
+- **AuthTemplate** - Authentication page layout
+- **ShowcaseTemplate** - Landing/marketing layout
+
+#### Example: DashboardLayout Template
+
+```typescript
+import { DashboardSidebar } from '@/components/organisms/DashboardSidebar'
+import { DashboardMobileHeader } from '@/components/organisms/DashboardMobileHeader'
+
+export const DashboardLayout = ({ children }) => {
+  return (
+    <div className="flex h-screen bg-gray-50">
+      {/* Desktop Sidebar */}
+      <aside className="hidden lg:block">
+        <DashboardSidebar />
+      </aside>
+
+      {/* Mobile Header */}
+      <div className="lg:hidden">
+        <DashboardMobileHeader />
+      </div>
+
+      {/* Main Content */}
+      <main className="flex-1 overflow-y-auto">
+        <div className="container mx-auto px-4 py-8">
+          {children}
+        </div>
+      </main>
+    </div>
+  )
+}
+```
+
+### Pages
+**Location**: `src/components/pages/` and `src/app/`
+
+Complete page implementations using templates.
+
+## White-Label Theming
+
+### CSS Custom Properties
+
+Reportr uses CSS variables for dynamic white-label branding.
+
+**File**: `src/app/globals.css`
+
+```css
+:root {
+  /* Brand colors (customizable per user) */
+  --brand-50: #f5f3ff;
+  --brand-100: #ede9fe;
+  --brand-200: #ddd6fe;
+  --brand-300: #c4b5fd;
+  --brand-400: #a78bfa;
+  --brand-500: #8b5cf6;  /* Primary color */
+  --brand-600: #7c3aed;
+  --brand-700: #6d28d9;
+  --brand-800: #5b21b6;
+  --brand-900: #4c1d95;
+  
+  /* Primary color RGB (for opacity) */
+  --primary-color: #8b5cf6;
+  --primary-color-rgb: 139, 92, 246;
+  
+  /* Semantic colors */
+  --success-500: #10b981;
+  --error-500: #ef4444;
+  --warning-500: #f59e0b;
+  --neutral-500: #6b7280;
+}
+```
+
+### Dynamic Theming
+
+User-specific colors applied at runtime:
+
+```typescript
+// In layout or provider
+const applyUserTheme = (primaryColor: string) => {
+  document.documentElement.style.setProperty('--primary-color', primaryColor)
+  
+  // Generate color shades programmatically
+  const shades = generateColorShades(primaryColor)
+  Object.entries(shades).forEach(([key, value]) => {
+    document.documentElement.style.setProperty(`--brand-${key}`, value)
+  })
+}
+```
+
+### Tailwind Configuration
+
+**File**: `tailwind.config.js`
+
+```javascript
+module.exports = {
+  theme: {
+    extend: {
+      colors: {
+        brand: {
+          50: 'var(--brand-50)',
+          100: 'var(--brand-100)',
+          200: 'var(--brand-200)',
+          300: 'var(--brand-300)',
+          400: 'var(--brand-400)',
+          500: 'var(--brand-500)',
+          600: 'var(--brand-600)',
+          700: 'var(--brand-700)',
+          800: 'var(--brand-800)',
+          900: 'var(--brand-900)',
+        },
+        success: { 500: 'var(--success-500)' },
+        error: { 500: 'var(--error-500)' },
+        warning: { 500: 'var(--warning-500)' },
+        neutral: { 500: 'var(--neutral-500)' },
+      }
+    }
+  }
+}
+```
+
+Usage in components:
+```typescript
+<Button className="bg-brand-600 hover:bg-brand-700">Click Me</Button>
+```
+
+## Component Patterns
+
+### 1. Composition over Props
+
+```typescript
+// Good - Flexible composition
+<Card>
+  <CardHeader>
+    <Typography variant="h3">Title</Typography>
+  </CardHeader>
+  <CardContent>
+    Content here
+  </CardContent>
+</Card>
+
+// Avoid - Rigid prop-based API
+<Card title="Title" content="Content here" />
+```
+
+### 2. TypeScript Props Interface
+
+```typescript
+export interface ButtonProps 
+  extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: 'primary' | 'secondary' | 'outline' | 'ghost'
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl'
+  loading?: boolean
+}
+```
+
+### 3. Forwarded Refs
+
+```typescript
+const Input = React.forwardRef<HTMLInputElement, InputProps>(
+  (props, ref) => {
+    return <input ref={ref} {...props} />
+  }
+)
+```
+
+### 4. Compound Components
+
+```typescript
+export const Card = ({ children, className }) => {
+  return <div className={cn('rounded-lg shadow', className)}>{children}</div>
+}
+
+Card.Header = ({ children }) => <div className="p-4 border-b">{children}</div>
+Card.Content = ({ children }) => <div className="p-4">{children}</div>
+Card.Footer = ({ children }) => <div className="p-4 border-t">{children}</div>
+```
+
+## Utility Functions
+
+**File**: `src/lib/utils.ts`
+
+```typescript
+import { clsx, type ClassValue } from 'clsx'
+import { twMerge } from 'tailwind-merge'
+
+// Merge Tailwind classes safely
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+
+// Get user initials for avatar
+export function getInitials(name: string): string {
+  return name
+    .split(' ')
+    .map(n => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2)
+}
+
+// Truncate text
+export function truncate(str: string, length: number): string {
+  return str.length > length ? `${str.slice(0, length)}...` : str
+}
+```
+
+## Best Practices
+
+1. **Single Responsibility** - Each component does one thing well
+2. **Reusability** - Design for multiple use cases
+3. **Accessibility** - ARIA labels, keyboard navigation, focus states
+4. **Performance** - React.memo for expensive components
+5. **TypeScript** - Full type coverage for props and events
+6. **Testing** - Unit tests for complex logic
+7. **Documentation** - JSDoc comments for exported components
+
+## Component Checklist
+
+When creating a new component:
+
+- [ ] TypeScript interface for props
+- [ ] Forwarded ref if DOM element
+- [ ] Accessibility attributes (ARIA)
+- [ ] Loading/disabled states
+- [ ] Responsive design (mobile-first)
+- [ ] Dark mode support (if applicable)
+- [ ] White-label theming support
+- [ ] Error states and validation
+- [ ] JSDoc documentation
+- [ ] Example usage in comments
+
+## Related Documentation
+
+- [Architecture Overview](/development/architecture/overview)
+- [API Structure](/development/architecture/api-structure)
+- [Database Schema](/development/architecture/database-schema)

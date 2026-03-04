@@ -1,0 +1,516 @@
+---
+title: Analytics API
+description: Complete reference for the Google Analytics 4 client implementation in Reportr
+---
+
+## Overview
+
+The Analytics client provides methods to fetch organic traffic data from Google Analytics 4 (GA4) using the Analytics Data API v1. It focuses on organic search traffic analysis and landing page performance.
+
+## Installation
+
+```typescript
+import { analyticsClient } from '@/lib/google/analytics';
+```
+
+## Class: AnalyticsClient
+
+### getOrganicTrafficData()
+
+Fetches comprehensive organic search traffic data for a specified period.
+
+```typescript
+async getOrganicTrafficData(
+  propertyId: string,
+  accessToken: string,
+  startDate: string,
+  endDate: string
+): Promise<AnalyticsData>
+```
+
+**Parameters:**
+- `propertyId` - GA4 property ID (numeric, e.g., `123456789`)
+- `accessToken` - Valid Google OAuth access token
+- `startDate` - Start date in `YYYY-MM-DD` format
+- `endDate` - End date in `YYYY-MM-DD` format
+
+**Returns:**
+```typescript
+{
+  organicSessions: number;
+  sessionsDelta: number;              // Percentage change vs previous period
+  bounceRate: number;                 // Percentage (0-100)
+  averageSessionDuration: number;     // Seconds
+  topLandingPages: LandingPageData[];
+  trafficTrend: TrafficDataPoint[];   // Daily data points
+  dateRange: {
+    startDate: string;
+    endDate: string;
+  };
+}
+```
+
+**Example Response:**
+```json
+{
+  "organicSessions": 12450,
+  "sessionsDelta": 15.3,
+  "bounceRate": 42.5,
+  "averageSessionDuration": 185.4,
+  "topLandingPages": [
+    {
+      "page": "/blog/seo-guide",
+      "sessions": 2340,
+      "users": 2100,
+      "bounceRate": 38.2,
+      "averageSessionDuration": 245.6
+    }
+  ],
+  "trafficTrend": [
+    {
+      "date": "2026-03-01",
+      "sessions": 415,
+      "users": 380
+    }
+  ],
+  "dateRange": {
+    "startDate": "2026-02-01",
+    "endDate": "2026-03-01"
+  }
+}
+```
+
+**Features:**
+- Automatically calculates previous period for comparison
+- Filters for `Organic Search` traffic only
+- Returns daily trend data for charting
+- Includes top landing pages with engagement metrics
+
+**Error Handling:**
+
+Throws `ReportGenerationError` with:
+- `401` - Authentication expired, requires reauthentication
+- `403` - Insufficient permissions or quota exceeded
+- `429` - Rate limit exceeded (retryable)
+- `500+` - Server errors (retryable)
+
+---
+
+### getTopLandingPages()
+
+Fetches top landing pages from organic search traffic.
+
+```typescript
+async getTopLandingPages(
+  propertyId: string,
+  accessToken: string,
+  startDate: string,
+  endDate: string,
+  limit: number = 10
+): Promise<LandingPageData[]>
+```
+
+**Parameters:**
+- `propertyId` - GA4 property ID
+- `accessToken` - Valid Google OAuth access token
+- `startDate` - Start date in `YYYY-MM-DD` format
+- `endDate` - End date in `YYYY-MM-DD` format
+- `limit` - Number of pages to return (default: 10)
+
+**Returns:**
+```typescript
+LandingPageData[] = [
+  {
+    page: string;                    // URL path
+    sessions: number;
+    users: number;
+    bounceRate: number;              // Percentage (0-100)
+    averageSessionDuration: number;  // Seconds
+  }
+]
+```
+
+**Example:**
+```typescript
+const landingPages = await analyticsClient.getTopLandingPages(
+  '123456789',
+  accessToken,
+  '2026-02-01',
+  '2026-03-01',
+  20  // Top 20 pages
+);
+```
+
+---
+
+### getTrafficSources()
+
+Breaks down traffic by channel grouping.
+
+```typescript
+async getTrafficSources(
+  propertyId: string,
+  accessToken: string,
+  startDate: string,
+  endDate: string
+): Promise<TrafficSource[]>
+```
+
+**Returns:**
+```typescript
+TrafficSource[] = [
+  {
+    source: string;      // Channel name (e.g., 'Organic Search', 'Direct')
+    users: number;
+    percentage: number;  // Percentage of total traffic
+  }
+]
+```
+
+**Example Response:**
+```json
+[
+  {
+    "source": "Organic Search",
+    "users": 12450,
+    "percentage": 45.2
+  },
+  {
+    "source": "Direct",
+    "users": 8320,
+    "percentage": 30.1
+  },
+  {
+    "source": "Referral",
+    "users": 4180,
+    "percentage": 15.2
+  },
+  {
+    "source": "Social",
+    "users": 2630,
+    "percentage": 9.5
+  }
+]
+```
+
+---
+
+### getConversionData()
+
+Fetches conversion metrics including organic search conversions.
+
+```typescript
+async getConversionData(
+  propertyId: string,
+  accessToken: string,
+  startDate: string,
+  endDate: string
+): Promise<ConversionData>
+```
+
+**Returns:**
+```typescript
+{
+  totalConversions: number;
+  conversionRate: number;         // Overall conversion rate (%)
+  organicConversions: number;
+  organicConversionRate: number;  // Organic-specific rate (%)
+}
+```
+
+**Example Response:**
+```json
+{
+  "totalConversions": 1240,
+  "conversionRate": 4.5,
+  "organicConversions": 560,
+  "organicConversionRate": 4.8
+}
+```
+
+**Note:** Returns zero values if conversions are not configured in GA4.
+
+---
+
+### getAccessibleProperties()
+
+Lists all GA4 properties accessible to the user.
+
+```typescript
+async getAccessibleProperties(
+  accessToken: string
+): Promise<Array<{ id: string; name: string }>>
+```
+
+**Returns:**
+```json
+[
+  {
+    "id": "123456789",
+    "name": "My Website - GA4"
+  },
+  {
+    "id": "987654321",
+    "name": "Blog - GA4"
+  }
+]
+```
+
+**Example:**
+```typescript
+const properties = await analyticsClient.getAccessibleProperties(accessToken);
+console.log(`Found ${properties.length} properties`);
+```
+
+---
+
+### validatePropertyAccess()
+
+Validates that a property ID is accessible with current credentials.
+
+```typescript
+async validatePropertyAccess(
+  propertyId: string,
+  accessToken: string
+): Promise<boolean>
+```
+
+**Returns:** `true` if property is accessible, `false` otherwise
+
+**Example:**
+```typescript
+const hasAccess = await analyticsClient.validatePropertyAccess(
+  '123456789',
+  accessToken
+);
+
+if (!hasAccess) {
+  throw new Error('Unable to access GA4 property');
+}
+```
+
+---
+
+## Static Methods
+
+### formatPropertyId()
+
+Cleans property ID by removing the `properties/` prefix if present.
+
+```typescript
+static formatPropertyId(propertyId: string): string
+```
+
+**Examples:**
+```typescript
+AnalyticsClient.formatPropertyId('properties/123456789');
+// '123456789'
+
+AnalyticsClient.formatPropertyId('123456789');
+// '123456789'
+```
+
+---
+
+## GA4 Metrics Explained
+
+### Sessions vs Users
+
+- **Sessions:** Total number of sessions (including returning users)
+- **Active Users:** Unique users who had an engaged session
+
+### Engagement Metrics
+
+- **Bounce Rate:** Percentage of sessions without engagement (GA4 definition)
+- **Average Session Duration:** Average time users spend per session (seconds)
+
+### Traffic Filtering
+
+All methods filter by `sessionDefaultChannelGroup = 'Organic Search'` to focus on SEO performance.
+
+**Channel Groups:**
+- Organic Search
+- Direct
+- Referral
+- Organic Social
+- Paid Search
+- Display
+- Email
+
+---
+
+## Error Handling
+
+All methods use automatic retry with exponential backoff:
+
+```typescript
+import { retryWithBackoff, ReportGenerationError } from './error-handling';
+
+try {
+  const data = await analyticsClient.getOrganicTrafficData(...);
+} catch (error) {
+  if (error instanceof ReportGenerationError) {
+    if (error.service === 'ga4') {
+      console.error('GA4 Error:', error.message);
+      console.error('Needs Reauth:', error.needsReauth);
+    }
+  }
+}
+```
+
+**Common Errors:**
+- `401` - Access token expired, user needs to reauthenticate
+- `403` - Property access denied or API not enabled
+- `429` - Quota exceeded (25,000 requests per day)
+- `500` - GA4 API temporarily unavailable
+
+---
+
+## Rate Limiting
+
+Google Analytics Data API quotas:
+- **Requests per day:** 25,000 per project
+- **Requests per 100 seconds:** 2,000 per project
+- **Concurrent requests:** 10 per project
+
+**Best Practices:**
+1. Batch requests using `Promise.all()` for parallel data fetching
+2. Cache results for frequently accessed data
+3. Use date ranges efficiently (max 93 days recommended)
+4. Monitor quota usage in Google Cloud Console
+
+---
+
+## Authentication
+
+Requires Google OAuth 2.0 with the following scope:
+
+```
+https://www.googleapis.com/auth/analytics.readonly
+```
+
+Access tokens expire after 1 hour. Implement token refresh logic:
+
+```typescript
+import { refreshAccessToken } from '@/lib/google/config';
+
+if (error.needsReauth) {
+  const newToken = await refreshAccessToken(refreshToken);
+  // Retry with new token
+}
+```
+
+---
+
+## Date Formats
+
+All date parameters use ISO 8601 format: `YYYY-MM-DD`
+
+**Relative Dates (alternative):**
+- `today`
+- `yesterday`
+- `7daysAgo`
+- `30daysAgo`
+
+**Example:**
+```typescript
+requestBody: {
+  dateRanges: [{ startDate: '7daysAgo', endDate: 'yesterday' }]
+}
+```
+
+---
+
+## Complete Usage Example
+
+```typescript
+import { analyticsClient } from '@/lib/google/analytics';
+import { AnalyticsData } from '@/types/google-api';
+
+async function analyzeOrganicTraffic(
+  propertyId: string,
+  accessToken: string
+): Promise<void> {
+  try {
+    // Validate access first
+    const hasAccess = await analyticsClient.validatePropertyAccess(
+      propertyId,
+      accessToken
+    );
+
+    if (!hasAccess) {
+      throw new Error('Property access denied');
+    }
+
+    // Get organic traffic data
+    const data: AnalyticsData = await analyticsClient.getOrganicTrafficData(
+      propertyId,
+      accessToken,
+      '2026-02-01',
+      '2026-03-01'
+    );
+
+    console.log(`Organic Sessions: ${data.organicSessions}`);
+    console.log(`Change: ${data.sessionsDelta}%`);
+    console.log(`Bounce Rate: ${data.bounceRate}%`);
+    console.log(`Avg Duration: ${data.averageSessionDuration}s`);
+
+    // Get traffic sources breakdown
+    const sources = await analyticsClient.getTrafficSources(
+      propertyId,
+      accessToken,
+      '2026-02-01',
+      '2026-03-01'
+    );
+
+    console.log('Traffic Sources:');
+    sources.forEach(source => {
+      console.log(`  ${source.source}: ${source.percentage}%`);
+    });
+
+    // Get conversion data if available
+    const conversions = await analyticsClient.getConversionData(
+      propertyId,
+      accessToken,
+      '2026-02-01',
+      '2026-03-01'
+    );
+
+    if (conversions.totalConversions > 0) {
+      console.log(`Organic Conversions: ${conversions.organicConversions}`);
+      console.log(`Conversion Rate: ${conversions.organicConversionRate}%`);
+    }
+
+  } catch (error) {
+    if (error instanceof ReportGenerationError) {
+      console.error(`${error.service} error: ${error.message}`);
+      console.error(`Retryable: ${error.retryable}`);
+    }
+  }
+}
+```
+
+---
+
+## GA4 vs Universal Analytics
+
+This client uses GA4 (Google Analytics 4) exclusively. Key differences:
+
+| Feature | GA4 | Universal Analytics |
+|---------|-----|--------------------|
+| User Metric | Active Users | Users |
+| Session Definition | Engagement-based | Time-based |
+| Bounce Rate | Not engaged sessions | Single-page sessions |
+| API | Analytics Data API v1 | Reporting API v4 |
+| Property ID | Numeric (123456789) | UA-XXXXXX-X |
+
+**Migration Note:** Universal Analytics stopped processing data on July 1, 2023.
+
+---
+
+## Related Resources
+
+- [Google Analytics Data API Documentation](https://developers.google.com/analytics/devguides/reporting/data/v1)
+- [Search Console API Reference](/api/google/search-console)
+- [PageSpeed API Reference](/api/google/pagespeed)
+- [GA4 Dimensions & Metrics Explorer](https://developers.google.com/analytics/devguides/reporting/data/v1/api-schema)

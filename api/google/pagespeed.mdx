@@ -1,0 +1,571 @@
+---
+title: PageSpeed API
+description: Complete reference for the Google PageSpeed Insights client implementation in Reportr
+---
+
+## Overview
+
+The PageSpeed client provides methods to analyze website performance using the PageSpeed Insights API v5. It fetches Lighthouse performance scores, Core Web Vitals, and actionable optimization opportunities for both mobile and desktop.
+
+## Installation
+
+```typescript
+import { pageSpeedClient } from '@/lib/google/pagespeed';
+```
+
+## Class: PageSpeedClient
+
+### getPageSpeedData()
+
+Fetches comprehensive PageSpeed analysis for both mobile and desktop.
+
+```typescript
+async getPageSpeedData(url: string): Promise<PageSpeedData>
+```
+
+**Parameters:**
+- `url` - Full URL to analyze (must include protocol)
+
+**Returns:**
+```typescript
+{
+  url: string;
+  mobileScore: number;        // 0-100
+  desktopScore: number;       // 0-100
+  coreWebVitals: {
+    lcp: number;              // Largest Contentful Paint (ms)
+    fid: number;              // First Input Delay proxy (ms)
+    cls: number;              // Cumulative Layout Shift (unitless)
+  };
+  opportunities: PageSpeedOpportunity[];
+}
+```
+
+**Example Response:**
+```json
+{
+  "url": "https://example.com",
+  "mobileScore": 67,
+  "desktopScore": 89,
+  "coreWebVitals": {
+    "lcp": 2840,
+    "fid": 125,
+    "cls": 0.08
+  },
+  "opportunities": [
+    {
+      "title": "Remove unused JavaScript",
+      "description": "Reduce unused JavaScript and defer loading scripts until they are required to decrease bytes consumed by network activity.",
+      "savings": 1450,
+      "impact": "high"
+    },
+    {
+      "title": "Serve images in next-gen formats",
+      "description": "Image formats like WebP and AVIF often provide better compression than PNG or JPEG.",
+      "savings": 850,
+      "impact": "medium"
+    }
+  ]
+}
+```
+
+**Features:**
+- Analyzes both mobile and desktop simultaneously
+- Extracts Core Web Vitals from mobile data (primary for ranking)
+- Identifies top 10 performance opportunities
+- Categorizes opportunities by impact (high/medium/low)
+
+**Error Handling:**
+
+Throws `ReportGenerationError` with:
+- `400` - Invalid URL format
+- `429` - Rate limit exceeded (retryable)
+- `500+` - API temporarily unavailable (retryable)
+
+---
+
+### analyzeCoreWebVitals()
+
+Analyzes Core Web Vitals with Google's threshold ratings.
+
+```typescript
+async analyzeCoreWebVitals(url: string): Promise<CoreWebVitalsAnalysis>
+```
+
+**Returns:**
+```typescript
+{
+  overall: 'good' | 'needs-improvement' | 'poor';
+  lcp: {
+    value: number;  // milliseconds
+    rating: 'good' | 'needs-improvement' | 'poor';
+  };
+  fid: {
+    value: number;  // milliseconds
+    rating: 'good' | 'needs-improvement' | 'poor';
+  };
+  cls: {
+    value: number;  // unitless score
+    rating: 'good' | 'needs-improvement' | 'poor';
+  };
+  recommendations: string[];
+}
+```
+
+**Example Response:**
+```json
+{
+  "overall": "needs-improvement",
+  "lcp": {
+    "value": 2840,
+    "rating": "needs-improvement"
+  },
+  "fid": {
+    "value": 125,
+    "rating": "needs-improvement"
+  },
+  "cls": {
+    "value": 0.08,
+    "rating": "good"
+  },
+  "recommendations": [
+    "Optimize images and reduce server response times to improve Largest Contentful Paint",
+    "Reduce JavaScript execution time and eliminate render-blocking resources to improve interactivity"
+  ]
+}
+```
+
+**Thresholds (based on Google's guidelines):**
+
+| Metric | Good | Needs Improvement | Poor |
+|--------|------|-------------------|------|
+| LCP | ≤ 2500ms | 2500-4000ms | > 4000ms |
+| FID | ≤ 100ms | 100-300ms | > 300ms |
+| CLS | ≤ 0.1 | 0.1-0.25 | > 0.25 |
+
+---
+
+### getPerformanceScore()
+
+Lightweight method to get performance score only.
+
+```typescript
+async getPerformanceScore(
+  url: string,
+  strategy: 'mobile' | 'desktop' = 'mobile'
+): Promise<number>
+```
+
+**Parameters:**
+- `url` - Full URL to analyze
+- `strategy` - Device type (default: 'mobile')
+
+**Returns:** Performance score (0-100)
+
+**Example:**
+```typescript
+const score = await pageSpeedClient.getPerformanceScore(
+  'https://example.com',
+  'mobile'
+);
+console.log(`Mobile Score: ${score}/100`);
+```
+
+**Score Interpretation:**
+- **90-100:** Good (green)
+- **50-89:** Needs Improvement (orange)
+- **0-49:** Poor (red)
+
+---
+
+### getMultiplePagesSpeeds()
+
+Analyzes multiple URLs with rate limit handling.
+
+```typescript
+async getMultiplePagesSpeeds(
+  urls: string[],
+  maxConcurrent: number = 3
+): Promise<Array<PageSpeedResult>>
+```
+
+**Parameters:**
+- `urls` - Array of URLs to analyze
+- `maxConcurrent` - Max concurrent requests (default: 3)
+
+**Returns:**
+```typescript
+PageSpeedResult[] = [
+  {
+    url: string;
+    data: PageSpeedData | null;
+    error?: string;
+  }
+]
+```
+
+**Example:**
+```typescript
+const urls = [
+  'https://example.com',
+  'https://example.com/blog',
+  'https://example.com/products'
+];
+
+const results = await pageSpeedClient.getMultiplePagesSpeeds(urls);
+
+results.forEach(result => {
+  if (result.data) {
+    console.log(`${result.url}: ${result.data.mobileScore}/100`);
+  } else {
+    console.error(`${result.url}: ${result.error}`);
+  }
+});
+```
+
+**Features:**
+- Processes URLs in chunks to avoid rate limiting
+- 2-second delay between chunks
+- Returns partial results if some URLs fail
+
+---
+
+## Static Methods
+
+### isValidUrl()
+
+Validates URL format for PageSpeed testing.
+
+```typescript
+static isValidUrl(url: string): boolean
+```
+
+**Examples:**
+```typescript
+PageSpeedClient.isValidUrl('https://example.com');
+// true
+
+PageSpeedClient.isValidUrl('example.com');
+// false - missing protocol
+
+PageSpeedClient.isValidUrl('ftp://example.com');
+// false - invalid protocol
+```
+
+---
+
+### formatUrl()
+
+Formats URL for PageSpeed testing (adds https if missing).
+
+```typescript
+static formatUrl(url: string): string
+```
+
+**Examples:**
+```typescript
+PageSpeedClient.formatUrl('example.com');
+// 'https://example.com'
+
+PageSpeedClient.formatUrl('http://example.com');
+// 'http://example.com'
+```
+
+---
+
+## Core Web Vitals Explained
+
+### Largest Contentful Paint (LCP)
+
+**What it measures:** Time until the largest content element is visible.
+
+**Good threshold:** ≤ 2.5 seconds
+
+**Common issues:**
+- Slow server response times
+- Render-blocking JavaScript and CSS
+- Large, unoptimized images
+- Client-side rendering
+
+**How to improve:**
+```typescript
+// Example optimization opportunity
+{
+  "title": "Reduce initial server response time",
+  "savings": 1200,  // milliseconds saved
+  "impact": "high"
+}
+```
+
+---
+
+### First Input Delay (FID)
+
+**What it measures:** Time from user interaction to browser response.
+
+**Good threshold:** ≤ 100 milliseconds
+
+**Note:** FID requires real user interaction. PageSpeed uses Total Blocking Time (TBT) as a proxy metric.
+
+**Common issues:**
+- Heavy JavaScript execution
+- Long tasks blocking main thread
+- Large, unoptimized scripts
+
+**How to improve:**
+```typescript
+// Example optimization opportunities
+[
+  {
+    "title": "Remove unused JavaScript",
+    "savings": 850,
+    "impact": "high"
+  },
+  {
+    "title": "Reduce JavaScript execution time",
+    "savings": 640,
+    "impact": "medium"
+  }
+]
+```
+
+---
+
+### Cumulative Layout Shift (CLS)
+
+**What it measures:** Visual stability - how much content shifts unexpectedly.
+
+**Good threshold:** ≤ 0.1
+
+**Common issues:**
+- Images without dimensions
+- Ads, embeds, iframes without reserved space
+- Dynamically injected content
+- Web fonts causing FOIT/FOUT
+
+**How to improve:**
+```html
+<!-- Add explicit dimensions -->
+<img src="hero.jpg" width="1200" height="600" alt="Hero">
+
+<!-- Reserve space for ads -->
+<div style="min-height: 250px">
+  <!-- Ad script here -->
+</div>
+```
+
+---
+
+## Performance Opportunities
+
+### Opportunity Impact Categories
+
+```typescript
+type Impact = 'high' | 'medium' | 'low';
+
+// Impact thresholds
+if (savings >= 1000) return 'high';    // 1+ second savings
+if (savings >= 300) return 'medium';   // 300ms+ savings
+return 'low';                          // < 300ms savings
+```
+
+### Common Opportunities
+
+**High Impact:**
+- Remove unused JavaScript (typically 1-3s savings)
+- Eliminate render-blocking resources (1-2s savings)
+- Reduce server response time (1-2s savings)
+
+**Medium Impact:**
+- Serve images in next-gen formats (500-1000ms)
+- Enable text compression (300-800ms)
+- Minify CSS/JavaScript (300-600ms)
+
+**Low Impact:**
+- Use efficient cache policies (< 300ms)
+- Preconnect to required origins (< 300ms)
+
+---
+
+## Error Handling
+
+```typescript
+import { pageSpeedClient } from '@/lib/google/pagespeed';
+import { ReportGenerationError } from '@/lib/google/error-handling';
+
+try {
+  const data = await pageSpeedClient.getPageSpeedData(url);
+} catch (error) {
+  if (error instanceof ReportGenerationError) {
+    console.error(`Service: ${error.service}`);
+    console.error(`Status: ${error.statusCode}`);
+    console.error(`Message: ${error.message}`);
+    
+    if (error.retryable) {
+      // Retry logic here
+      setTimeout(() => retry(), 5000);
+    }
+  }
+}
+```
+
+**Common Errors:**
+- `400` - Invalid URL format (use `formatUrl()` helper)
+- `429` - Rate limit exceeded (wait and retry)
+- `500` - Lighthouse analysis failed (retry or check URL)
+
+---
+
+## Rate Limiting
+
+PageSpeed Insights API quotas:
+- **Requests per day:** 25,000 per API key
+- **Requests per 100 seconds:** 400 per API key
+- **Requests per minute:** 240 per API key
+
+**Best Practices:**
+1. Limit concurrent requests to 3 using `getMultiplePagesSpeeds()`
+2. Add 2-second delays between batches
+3. Cache results for 24 hours (performance data changes slowly)
+4. Use `getPerformanceScore()` for lighter checks
+
+**Rate Limit Handling:**
+```typescript
+// Automatic retry with exponential backoff
+await retryWithBackoff(async () => {
+  return await pageSpeedClient.getPageSpeedData(url);
+}, 3, 2000);  // 3 retries, 2s base delay
+```
+
+---
+
+## Authentication
+
+PageSpeed Insights API uses API key authentication (not OAuth).
+
+**Configuration:**
+```env
+PAGESPEED_API_KEY=your_api_key_here
+```
+
+**Get API Key:**
+1. Visit [Google Cloud Console](https://console.cloud.google.com/)
+2. Enable PageSpeed Insights API
+3. Create credentials → API key
+4. Restrict key to PageSpeed Insights API
+
+---
+
+## Complete Usage Example
+
+```typescript
+import { pageSpeedClient } from '@/lib/google/pagespeed';
+import { PageSpeedData } from '@/types/google-api';
+
+async function analyzeWebsitePerformance(
+  url: string
+): Promise<void> {
+  try {
+    // Validate and format URL
+    if (!PageSpeedClient.isValidUrl(url)) {
+      url = PageSpeedClient.formatUrl(url);
+    }
+
+    console.log(`Analyzing: ${url}`);
+
+    // Get comprehensive PageSpeed data
+    const data: PageSpeedData = await pageSpeedClient.getPageSpeedData(url);
+
+    console.log('\n=== Performance Scores ===');
+    console.log(`Mobile: ${data.mobileScore}/100`);
+    console.log(`Desktop: ${data.desktopScore}/100`);
+
+    console.log('\n=== Core Web Vitals ===');
+    console.log(`LCP: ${data.coreWebVitals.lcp}ms`);
+    console.log(`FID: ${data.coreWebVitals.fid}ms`);
+    console.log(`CLS: ${data.coreWebVitals.cls}`);
+
+    console.log('\n=== Top Opportunities ===');
+    data.opportunities.slice(0, 5).forEach((opp, i) => {
+      console.log(`${i + 1}. ${opp.title}`);
+      console.log(`   Impact: ${opp.impact} (${opp.savings}ms savings)`);
+    });
+
+    // Analyze Core Web Vitals with ratings
+    const cwvAnalysis = await pageSpeedClient.analyzeCoreWebVitals(url);
+    
+    console.log('\n=== Core Web Vitals Analysis ===');
+    console.log(`Overall Rating: ${cwvAnalysis.overall}`);
+    console.log(`LCP Rating: ${cwvAnalysis.lcp.rating}`);
+    console.log(`FID Rating: ${cwvAnalysis.fid.rating}`);
+    console.log(`CLS Rating: ${cwvAnalysis.cls.rating}`);
+
+    if (cwvAnalysis.recommendations.length > 0) {
+      console.log('\n=== Recommendations ===');
+      cwvAnalysis.recommendations.forEach((rec, i) => {
+        console.log(`${i + 1}. ${rec}`);
+      });
+    }
+
+    // Analyze multiple pages
+    const topPages = [
+      url,
+      `${url}/blog`,
+      `${url}/products`
+    ];
+
+    console.log('\n=== Analyzing Top Pages ===');
+    const results = await pageSpeedClient.getMultiplePagesSpeeds(topPages);
+    
+    results.forEach(result => {
+      if (result.data) {
+        console.log(`${result.url}: ${result.data.mobileScore}/100`);
+      } else {
+        console.error(`${result.url}: Failed - ${result.error}`);
+      }
+    });
+
+  } catch (error) {
+    if (error instanceof ReportGenerationError) {
+      console.error(`\nError analyzing ${url}:`);
+      console.error(`Service: ${error.service}`);
+      console.error(`Message: ${error.message}`);
+      
+      if (error.retryable) {
+        console.log('This error is retryable. Please try again.');
+      }
+    } else {
+      console.error('Unexpected error:', error);
+    }
+  }
+}
+
+// Run analysis
+analyzeWebsitePerformance('https://example.com');
+```
+
+---
+
+## Performance Score Breakdown
+
+Lighthouse Performance score is weighted:
+
+| Metric | Weight |
+|--------|--------|
+| First Contentful Paint | 10% |
+| Speed Index | 10% |
+| Largest Contentful Paint | 25% |
+| Total Blocking Time | 30% |
+| Cumulative Layout Shift | 25% |
+
+**Key Takeaway:** Focus on LCP, TBT, and CLS for maximum impact.
+
+---
+
+## Related Resources
+
+- [PageSpeed Insights API Documentation](https://developers.google.com/speed/docs/insights/v5/get-started)
+- [Web Vitals Official Guide](https://web.dev/vitals/)
+- [Lighthouse Scoring Calculator](https://googlechrome.github.io/lighthouse/scorecalc/)
+- [Search Console API Reference](/api/google/search-console)
+- [Analytics API Reference](/api/google/analytics)

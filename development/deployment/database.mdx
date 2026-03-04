@@ -1,0 +1,639 @@
+---
+title: 'Database Deployment'
+description: 'Set up and configure PostgreSQL database for Reportr production'
+---
+
+# Database Deployment
+
+Reportr uses PostgreSQL with Prisma ORM for data persistence. This guide covers production database setup, migrations, and best practices.
+
+## Database Requirements
+
+### PostgreSQL Version
+
+- **Minimum**: PostgreSQL 12
+- **Recommended**: PostgreSQL 14 or higher
+- **Compatibility**: Tested with PostgreSQL 12-16
+
+### Connection Pooling
+
+**Required** for serverless environments (Vercel, AWS Lambda):
+- **PgBouncer** - Connection pooler for PostgreSQL
+- **Supabase Pooler** - Built-in connection pooling
+- **Neon** - Automatic connection pooling
+
+<Warning>
+  Without connection pooling, you may hit PostgreSQL connection limits in serverless environments.
+</Warning>
+
+## Database Providers
+
+Choose a PostgreSQL provider based on your needs:
+
+<CardGroup cols={2}>
+  <Card title="Vercel Postgres" icon="database">
+    **Pros**: Deep Vercel integration, automatic pooling, simple setup
+    
+    **Cons**: More expensive, limited to Vercel ecosystem
+    
+    **Pricing**: $0.25/GB stored + $0.02/GB transferred
+    
+    **Best for**: Vercel-first deployments
+  </Card>
+  
+  <Card title="Neon" icon="bolt">
+    **Pros**: Serverless, autoscaling, generous free tier, branching
+    
+    **Cons**: Newer platform, limited regions
+    
+    **Pricing**: Free tier (0.5GB), $20/month for pro
+    
+    **Best for**: Development and small-medium production
+  </Card>
+  
+  <Card title="Supabase" icon="server">
+    **Pros**: Free tier (500MB), real-time features, backups
+    
+    **Cons**: Requires manual pooling configuration
+    
+    **Pricing**: Free tier available, $25/month for pro
+    
+    **Best for**: Projects needing real-time features
+  </Card>
+  
+  <Card title="Railway" icon="train">
+    **Pros**: Simple setup, automatic backups, fair pricing
+    
+    **Cons**: Less specialized for serverless
+    
+    **Pricing**: $5/month base + usage
+    
+    **Best for**: Developers wanting simplicity
+  </Card>
+</CardGroup>
+
+## Database Schema
+
+### Core Models
+
+Reportr's Prisma schema includes:
+
+```prisma
+model User {
+  id                   String    @id @default(cuid())
+  email                String    @unique
+  whiteLabelEnabled    Boolean   @default(false)
+  companyName          String?
+  primaryColor         String    @default("#8B5CF6")
+  logo                 String?
+  plan                 Plan      @default(FREE)
+  subscriptionStatus   String    @default("free")
+  // ... additional fields
+  
+  clients              Client[]
+  reports              Report[]
+  payments             Payment[]
+}
+
+model Client {
+  id                           String    @id @default(cuid())
+  name                         String
+  domain                       String
+  googleSearchConsoleConnected Boolean   @default(false)
+  googleAnalyticsConnected     Boolean   @default(false)
+  // ... Google API tokens (encrypted)
+  
+  userId                       String
+  user                         User      @relation(fields: [userId], references: [id])
+  reports                      Report[]
+}
+
+model Report {
+  id                    String       @id @default(cuid())
+  title                 String
+  status                ReportStatus @default(PENDING)
+  data                  Json?
+  pdfUrl                String?
+  aiInsights            Json?
+  // ... additional fields
+  
+  clientId              String
+  userId                String
+  client                Client       @relation(fields: [clientId], references: [id])
+  user                  User         @relation(fields: [userId], references: [id])
+}
+```
+
+### Key Features
+
+- **User white-labeling**: `companyName`, `primaryColor`, `logo`
+- **Google API tokens**: Encrypted storage for OAuth tokens
+- **Report data**: JSON fields for flexible data storage
+- **AI insights**: Structured AI-generated insights with metadata
+- **Subscription management**: PayPal integration for billing
+
+## Setup Instructions
+
+### 1. Create Database
+
+<Tabs>
+  <Tab title="Vercel Postgres">
+    ```bash
+    # Install Vercel CLI
+    npm i -g vercel
+    
+    # Create database
+    vercel postgres create reportr-db
+    
+    # Link to project
+    vercel link
+    vercel env pull .env.local
+    ```
+    
+    This automatically sets `POSTGRES_URL` and other connection variables.
+  </Tab>
+  
+  <Tab title="Neon">
+    1. Go to [neon.tech](https://neon.tech)
+    2. Create a new project
+    3. Copy the connection string:
+    
+    ```bash
+    DATABASE_URL="postgresql://user:pass@ep-xxx.us-east-2.aws.neon.tech/reportr?sslmode=require"
+    ```
+    
+    Neon automatically provides connection pooling.
+  </Tab>
+  
+  <Tab title="Supabase">
+    1. Go to [supabase.com](https://supabase.com)
+    2. Create a new project
+    3. Go to **Settings → Database**
+    4. Copy both connection strings:
+    
+    ```bash
+    # Direct connection (for migrations)
+    DATABASE_URL="postgresql://postgres:password@db.xxx.supabase.co:5432/postgres"
+    
+    # Pooled connection (for application)
+    PRISMA_DATABASE_URL="postgresql://postgres:password@db.xxx.supabase.co:6543/postgres?pgbouncer=true"
+    ```
+  </Tab>
+  
+  <Tab title="Railway">
+    1. Go to [railway.app](https://railway.app)
+    2. Create a new project
+    3. Add PostgreSQL service
+    4. Copy connection string from variables:
+    
+    ```bash
+    DATABASE_URL="postgresql://postgres:password@containers-us-west-xxx.railway.app:5432/railway"
+    ```
+  </Tab>
+</Tabs>
+
+### 2. Configure Environment Variables
+
+Set in your deployment platform (Vercel, etc.):
+
+```bash
+# Primary connection (for Prisma migrations)
+DATABASE_URL="postgresql://user:password@host:5432/database"
+
+# Pooled connection (for application queries)
+PRISMA_DATABASE_URL="postgresql://user:password@host:6543/database?pgbouncer=true"
+```
+
+<Note>
+  Use `DATABASE_URL` for migrations and `PRISMA_DATABASE_URL` for runtime queries.
+</Note>
+
+### 3. Run Migrations
+
+<Steps>
+  <Step title="Generate Prisma Client">
+    ```bash
+    npx prisma generate
+    ```
+  </Step>
+  
+  <Step title="Push schema to database">
+    For production (first time):
+    ```bash
+    npx prisma db push
+    ```
+    
+    For development (with migration history):
+    ```bash
+    npx prisma migrate dev
+    ```
+  </Step>
+  
+  <Step title="Verify database">
+    ```bash
+    npx prisma studio
+    ```
+    
+    Opens Prisma Studio at http://localhost:5555 to browse your database.
+  </Step>
+</Steps>
+
+### 4. Seed Initial Data (Optional)
+
+```bash
+npm run db:seed
+```
+
+This populates the database with:
+- Sample app settings
+- Default email templates
+- Test user (in development)
+
+## Prisma Configuration
+
+### Connection Datasource
+
+In `prisma/schema.prisma`:
+
+```prisma
+datasource db {
+  provider  = "postgresql"
+  url       = env("PRISMA_DATABASE_URL")  // Pooled connection
+  directUrl = env("DATABASE_URL")          // Direct connection for migrations
+}
+```
+
+### Client Configuration
+
+```prisma
+generator client {
+  provider = "prisma-client-js"
+}
+```
+
+### Using Prisma Client
+
+In your application code:
+
+```typescript
+// src/lib/db.ts
+import { PrismaClient } from '@prisma/client'
+
+const globalForPrisma = global as unknown as { prisma: PrismaClient }
+
+export const prisma =
+  globalForPrisma.prisma ||
+  new PrismaClient({
+    log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+  })
+
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
+```
+
+This prevents multiple Prisma Client instances in development (hot reload).
+
+## Database Migrations
+
+### Creating Migrations
+
+```bash
+# Create a new migration
+npx prisma migrate dev --name add_custom_metrics
+
+# Apply migrations in production
+npx prisma migrate deploy
+```
+
+### Migration Strategy
+
+<AccordionGroup>
+  <Accordion title="Development" icon="code">
+    Use `prisma migrate dev` to:
+    - Create migration files
+    - Apply to development database
+    - Regenerate Prisma Client
+  </Accordion>
+  
+  <Accordion title="Staging" icon="flask">
+    Use `prisma migrate deploy` to:
+    - Apply pending migrations
+    - Skip migration generation
+    - Safe for CI/CD pipelines
+  </Accordion>
+  
+  <Accordion title="Production" icon="rocket">
+    Use `prisma migrate deploy` with:
+    - Automatic backups before migration
+    - Rollback plan prepared
+    - Monitor for issues post-migration
+  </Accordion>
+</AccordionGroup>
+
+### Rollback Strategy
+
+Prisma doesn't have built-in rollback. Options:
+
+1. **Database snapshots**: Take snapshot before migration
+2. **Manual rollback**: Write down migration SQL to revert
+3. **Restore from backup**: Use provider's backup system
+
+## Performance Optimization
+
+### Indexes
+
+Key indexes defined in schema:
+
+```prisma
+model Report {
+  // ... fields
+  
+  @@index([clientId])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Client {
+  // ... fields
+  
+  @@index([userId])
+  @@index([domain])
+}
+```
+
+### Connection Pooling
+
+Configure PgBouncer for optimal performance:
+
+```bash
+# Recommended connection string parameters
+PRISMA_DATABASE_URL="postgresql://...?pgbouncer=true&connection_limit=1&pool_timeout=10"
+```
+
+Parameters:
+- `pgbouncer=true`: Enable PgBouncer mode
+- `connection_limit=1`: Limit connections per serverless function
+- `pool_timeout=10`: Timeout for acquiring connection (seconds)
+
+### Query Optimization
+
+<Tabs>
+  <Tab title="Use select to limit fields">
+    ```typescript
+    // Bad: Fetches all fields
+    const users = await prisma.user.findMany()
+    
+    // Good: Only fetch needed fields
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        email: true,
+        companyName: true,
+      },
+    })
+    ```
+  </Tab>
+  
+  <Tab title="Use include carefully">
+    ```typescript
+    // Bad: N+1 query problem
+    const clients = await prisma.client.findMany()
+    for (const client of clients) {
+      const reports = await prisma.report.findMany({ where: { clientId: client.id } })
+    }
+    
+    // Good: Single query with include
+    const clients = await prisma.client.findMany({
+      include: {
+        reports: {
+          take: 10,
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+    })
+    ```
+  </Tab>
+  
+  <Tab title="Paginate large queries">
+    ```typescript
+    // Bad: Fetch all reports
+    const reports = await prisma.report.findMany()
+    
+    // Good: Paginate with cursor
+    const reports = await prisma.report.findMany({
+      take: 20,
+      skip: page * 20,
+      orderBy: { createdAt: 'desc' },
+    })
+    ```
+  </Tab>
+</Tabs>
+
+## Backup Strategy
+
+### Automated Backups
+
+<Tabs>
+  <Tab title="Vercel Postgres">
+    - **Automatic**: Daily backups (retained 7 days)
+    - **Point-in-time recovery**: Available on Pro plan
+    - **Configuration**: No setup required
+  </Tab>
+  
+  <Tab title="Neon">
+    - **Automatic**: Continuous backups
+    - **Branches**: Create database branches for testing
+    - **Restore**: Point-in-time restore to any point in last 7 days
+  </Tab>
+  
+  <Tab title="Supabase">
+    - **Automatic**: Daily backups (free tier: 7 days, pro: 30 days)
+    - **Manual**: Trigger backups via dashboard
+    - **Download**: Export database as SQL file
+  </Tab>
+  
+  <Tab title="Railway">
+    - **Automatic**: Daily snapshots
+    - **Manual**: Create snapshots on-demand
+    - **Restore**: One-click restore from snapshot
+  </Tab>
+</Tabs>
+
+### Manual Backup
+
+```bash
+# Export database to SQL file
+pg_dump $DATABASE_URL > backup.sql
+
+# Restore from backup
+psql $DATABASE_URL < backup.sql
+```
+
+## Monitoring & Maintenance
+
+### Database Monitoring
+
+Monitor these metrics:
+
+- **Connection count**: Should stay below max connections
+- **Query performance**: Slow queries > 1 second
+- **Database size**: Monitor growth for cost planning
+- **Error rate**: Connection errors, timeouts
+
+### Prisma Logging
+
+Enable query logging in development:
+
+```typescript
+const prisma = new PrismaClient({
+  log: [
+    { level: 'query', emit: 'event' },
+    { level: 'error', emit: 'stdout' },
+    { level: 'warn', emit: 'stdout' },
+  ],
+})
+
+prisma.$on('query', (e) => {
+  console.log('Query: ' + e.query)
+  console.log('Duration: ' + e.duration + 'ms')
+})
+```
+
+### Database Maintenance
+
+Regular tasks:
+
+1. **Vacuum**: Reclaim storage (automatic in most providers)
+2. **Analyze**: Update query planner statistics
+3. **Reindex**: Rebuild indexes if performance degrades
+
+```sql
+-- Run manually if needed
+VACUUM ANALYZE;
+REINDEX DATABASE reportr;
+```
+
+## Security Best Practices
+
+<Steps>
+  <Step title="Use SSL connections">
+    Always use `sslmode=require` in connection string:
+    ```bash
+    DATABASE_URL="postgresql://...?sslmode=require"
+    ```
+  </Step>
+  
+  <Step title="Rotate database credentials">
+    Update database password periodically:
+    ```bash
+    # Update in database provider dashboard
+    # Update environment variables in Vercel/deployment platform
+    # Redeploy application
+    ```
+  </Step>
+  
+  <Step title="Use read-only connections for analytics">
+    Create separate database user with read-only access:
+    ```sql
+    CREATE USER analytics_readonly WITH PASSWORD 'secure_password';
+    GRANT SELECT ON ALL TABLES IN SCHEMA public TO analytics_readonly;
+    ```
+  </Step>
+  
+  <Step title="Encrypt sensitive data">
+    Encrypt Google API tokens and other sensitive fields before storing:
+    ```typescript
+    import crypto from 'crypto'
+    
+    function encrypt(text: string): string {
+      const cipher = crypto.createCipher('aes-256-cbc', process.env.ENCRYPTION_KEY!)
+      return cipher.update(text, 'utf8', 'hex') + cipher.final('hex')
+    }
+    ```
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Connection pool exhausted">
+    **Error**: `Can't reach database server`
+    
+    **Solution**: 
+    1. Enable connection pooling with PgBouncer
+    2. Set `connection_limit=1` in connection string
+    3. Reduce concurrent function executions
+  </Accordion>
+  
+  <Accordion title="Prisma Client not found">
+    **Error**: `@prisma/client did not initialize yet`
+    
+    **Solution**:
+    ```bash
+    npm run postinstall
+    # or
+    npx prisma generate
+    ```
+  </Accordion>
+  
+  <Accordion title="Migration conflicts">
+    **Error**: `Migration failed to apply`
+    
+    **Solution**:
+    ```bash
+    # Reset shadow database
+    npx prisma migrate reset
+    
+    # Or resolve manually
+    npx prisma migrate resolve --applied "migration_name"
+    ```
+  </Accordion>
+  
+  <Accordion title="Slow queries">
+    **Issue**: Queries taking > 1 second
+    
+    **Solution**:
+    1. Add indexes for frequently queried fields
+    2. Use `select` to limit returned fields
+    3. Implement pagination for large datasets
+    4. Use database query analyzer
+  </Accordion>
+</AccordionGroup>
+
+## Cost Estimation
+
+### Monthly Database Costs
+
+<Tabs>
+  <Tab title="Small (< 100 users)">
+    - **Neon**: Free tier (0.5GB)
+    - **Supabase**: Free tier (500MB)
+    - **Railway**: ~$5-10/month
+    - **Vercel Postgres**: ~$10-20/month
+  </Tab>
+  
+  <Tab title="Medium (100-1000 users)">
+    - **Neon**: $20/month (Pro)
+    - **Supabase**: $25/month (Pro)
+    - **Railway**: ~$15-30/month
+    - **Vercel Postgres**: ~$30-60/month
+  </Tab>
+  
+  <Tab title="Large (1000+ users)">
+    - **Neon**: $20-100/month
+    - **Supabase**: $25-100/month
+    - **Railway**: ~$50-200/month
+    - **Vercel Postgres**: ~$100-300/month
+  </Tab>
+</Tabs>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Environment Variables" icon="key" href="/development/deployment/environment">
+    Configure all required environment variables
+  </Card>
+  <Card title="Vercel Deployment" icon="upload" href="/development/deployment/vercel">
+    Deploy your application to Vercel
+  </Card>
+</CardGroup>
